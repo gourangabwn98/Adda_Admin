@@ -630,7 +630,16 @@ export default function MenuAdminPage() {
                           gap: 10,
                         }}
                       >
-                        <span style={{ fontSize: 24 }}>{item.image}</span>
+                        <img
+                          src={item.image || "https://via.placeholder.com/60"}
+                          alt={item.name}
+                          style={{
+                            width: 60,
+                            height: 60,
+                            borderRadius: 10,
+                            objectFit: "cover",
+                          }}
+                        />
                         <div>
                           <div style={{ fontWeight: 500 }}>{item.name}</div>
                           <div
