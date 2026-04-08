@@ -6,6 +6,7 @@ import {
   getAllOrders,
   getAllInvoices,
   updateInvoiceStatus,
+  getAllTables, // ← Added for dynamic tables
 } from "../../services/adminService.js";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -25,17 +26,6 @@ const TYPE_STYLE = {
   Dining: { bg: "#FBEAF0", color: "#993556" },
   "Take Away": { bg: "#E6F1FB", color: "#185FA5" },
 };
-
-const TABLES = [
-  { id: 1, seats: 4 },
-  { id: 2, seats: 4 },
-  { id: 3, seats: 4 },
-  { id: 4, seats: 4 },
-  { id: 5, seats: 4 },
-  { id: 6, seats: 2 },
-  { id: 7, seats: 2 },
-  { id: 8, seats: 4 },
-];
 
 const AVATAR_COLORS = [
   { bg: "#E6F1FB", color: "#185FA5" },
@@ -70,6 +60,7 @@ const isToday = (d) => {
     dt.getDate() === n.getDate()
   );
 };
+
 const initials = (n) =>
   !n || n === "Guest"
     ? "G"
@@ -79,6 +70,7 @@ const initials = (n) =>
         .join("")
         .toUpperCase()
         .slice(0, 2);
+
 const avatarColor = (s) =>
   AVATAR_COLORS[(s?.charCodeAt(0) || 0) % AVATAR_COLORS.length];
 
@@ -274,7 +266,7 @@ function StatusSummary({ orders }) {
   );
 }
 
-// ── TableMap with invoice blink + status update modal ─────────────────────────
+// ── TableMap with dynamic tables from API ─────────────────────────────────────
 function TableMap({
   orders,
   invoiceMap,
@@ -282,6 +274,17 @@ function TableMap({
   onInvoiceStatusChange,
 }) {
   const [activeTable, setActiveTable] = useState(null);
+  const [tables, setTables] = useState([]); // ← Dynamic tables from backend
+
+  // Fetch tables
+  useEffect(() => {
+    getAllTables()
+      .then((res) => setTables(res.data?.tables || []))
+      .catch((err) => {
+        console.error("Failed to load tables", err);
+        setTables([]);
+      });
+  }, []);
 
   // build tableNo → order map
   const tableOrderMap = {};
@@ -302,7 +305,7 @@ function TableMap({
 
   return (
     <div>
-      {/* table grid */}
+      {/* Dynamic Table Grid */}
       <div
         style={{
           display: "grid",
@@ -311,122 +314,141 @@ function TableMap({
           marginBottom: 12,
         }}
       >
-        {TABLES.map((t) => {
-          const o = tableOrderMap[t.id];
-          const inv = invoiceMap[t.id];
-          const pending = inv?.invoiceStatus?.toLowerCase() === "pending";
-          const st = o
-            ? pending
-              ? { bg: "#fff0f5", color: "#d32f2f" }
-              : STATUS_STYLE[o.status] || { bg: "#f0f0f0", color: "#888" }
-            : {
-                bg: "var(--color-background-secondary,#f5f5f5)",
-                color: "#888780",
-              };
-          const borderColor = pending ? "#d32f2f" : o ? st.color : "#B4B2A9";
-          const isActive = activeTable === t.id;
+        {tables.length > 0 ? (
+          tables
+            .filter((t) => t.status === "Active" || !t.status)
+            .sort((a, b) => a.tableNo - b.tableNo)
+            .map((t) => {
+              const o = tableOrderMap[t.tableNo];
+              const inv = invoiceMap[t.tableNo];
+              const pending = inv?.invoiceStatus?.toLowerCase() === "pending";
+              const st = o
+                ? pending
+                  ? { bg: "#fff0f5", color: "#d32f2f" }
+                  : STATUS_STYLE[o.status] || { bg: "#f0f0f0", color: "#888" }
+                : {
+                    bg: "var(--color-background-secondary,#f5f5f5)",
+                    color: "#888780",
+                  };
+              const borderColor = pending
+                ? "#d32f2f"
+                : o
+                  ? st.color
+                  : "#B4B2A9";
+              const isActive = activeTable === t.tableNo;
 
-          return (
-            <div
-              key={t.id}
-              className={pending ? "dash-blink" : ""}
-              onClick={() => setActiveTable(isActive ? null : t.id)}
-              style={{
-                borderRadius: 8,
-                padding: "10px 12px",
-                cursor: "pointer",
-                background: st.bg,
-                borderLeft: `3px solid ${borderColor}`,
-                border: isActive ? `2px solid ${PINK}` : `0 0 0 0`,
-                borderLeft: isActive
-                  ? `3px solid ${PINK}`
-                  : `3px solid ${borderColor}`,
-                outline: isActive ? `2px solid ${PINK}33` : "none",
-                transition: "transform .12s",
-                transform: isActive ? "scale(1.03)" : "scale(1)",
-                position: "relative",
-              }}
-            >
-              {/* pending dot */}
-              {pending && (
+              return (
                 <div
+                  key={t.tableNo}
+                  className={pending ? "dash-blink" : ""}
+                  onClick={() => setActiveTable(isActive ? null : t.tableNo)}
                   style={{
-                    position: "absolute",
-                    top: -4,
-                    right: -4,
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    background: "#d32f2f",
-                    border: "2px solid #fff",
-                    zIndex: 2,
-                  }}
-                />
-              )}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 4,
-                }}
-              >
-                <span style={{ fontSize: 12, fontWeight: 500 }}>T{t.id}</span>
-                <span
-                  style={{
-                    fontSize: 10,
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    cursor: "pointer",
                     background: st.bg,
-                    color: st.color,
-                    padding: "1px 6px",
-                    borderRadius: 10,
-                    fontWeight: 500,
-                    border: `0.5px solid ${borderColor}`,
+                    borderLeft: `3px solid ${borderColor}`,
+                    border: isActive ? `2px solid ${PINK}` : "none",
+                    outline: isActive ? `2px solid ${PINK}33` : "none",
+                    transition: "transform .12s",
+                    transform: isActive ? "scale(1.03)" : "scale(1)",
+                    position: "relative",
                   }}
                 >
-                  {pending ? "Pay Due" : o ? o.status : "Free"}
-                </span>
-              </div>
-              {o ? (
-                <>
+                  {/* pending dot */}
+                  {pending && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: -4,
+                        right: -4,
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: "#d32f2f",
+                        border: "2px solid #fff",
+                        zIndex: 2,
+                      }}
+                    />
+                  )}
                   <div
                     style={{
-                      fontSize: 11,
-                      color: "var(--color-text-secondary,#777)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 4,
                     }}
                   >
-                    {o.user?.name || "Guest"}
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>
+                      T{t.tableNo}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        background: st.bg,
+                        color: st.color,
+                        padding: "1px 6px",
+                        borderRadius: 10,
+                        fontWeight: 500,
+                        border: `0.5px solid ${borderColor}`,
+                      }}
+                    >
+                      {pending ? "Pay Due" : o ? o.status : "Free"}
+                    </span>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 500,
-                      color: pending ? "#d32f2f" : PINK,
-                      marginTop: 2,
-                    }}
-                  >
-                    ₹{Math.round(o.total)}
-                  </div>
-                </>
-              ) : (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--color-text-tertiary,#aaa)",
-                    marginTop: 3,
-                  }}
-                >
-                  {t.seats} seats
+                  {o ? (
+                    <>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "var(--color-text-secondary,#777)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {o.user?.name || "Guest"}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: pending ? "#d32f2f" : PINK,
+                          marginTop: 2,
+                        }}
+                      >
+                        ₹{Math.round(o.total)}
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--color-text-tertiary,#aaa)",
+                        marginTop: 3,
+                      }}
+                    >
+                      {t.seats} seats
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })
+        ) : (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              textAlign: "center",
+              padding: 40,
+              color: "#aaa",
+            }}
+          >
+            Loading tables...
+          </div>
+        )}
       </div>
 
-      {/* inline drawer when table selected */}
+      {/* inline drawer when table selected - Your original code unchanged */}
       {activeTable && (
         <div
           style={{
@@ -612,7 +634,6 @@ function TableMap({
 
               {/* RIGHT: status update + invoice */}
               <div>
-                {/* status update */}
                 <div
                   style={{
                     fontSize: 11,
@@ -1038,7 +1059,7 @@ export default function DashboardPage({ data }) {
   const s = data?.stats || {};
 
   const [allTodayOrders, setAllTodayOrders] = useState([]);
-  const [invoiceMap, setInvoiceMap] = useState({}); // tableNo → invoice
+  const [invoiceMap, setInvoiceMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
@@ -1085,7 +1106,7 @@ export default function DashboardPage({ data }) {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -1156,7 +1177,7 @@ export default function DashboardPage({ data }) {
     },
     {
       label: "Active tables",
-      value: `${allTodayOrders.filter((o) => o.orderType === "Dining" && o.tableNo && !["Completed", "Cancelled"].includes(o.status)).length} / ${TABLES.length}`,
+      value: `${allTodayOrders.filter((o) => o.orderType === "Dining" && o.tableNo && !["Completed", "Cancelled"].includes(o.status)).length}`,
       sub: "Dining now",
     },
     {
@@ -1231,7 +1252,7 @@ export default function DashboardPage({ data }) {
                 marginLeft: 4,
               }}
             >
-              refreshes every 30s
+              refreshes every 10s
             </span>
           </div>
         </div>

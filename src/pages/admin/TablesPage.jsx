@@ -5,17 +5,27 @@ import {
   updateOrderStatus,
   getAllInvoices,
   updateInvoiceStatus,
+  getAllTables,
+  createTable,
+  updateTable,
+  deleteTable,
 } from "../../services/adminService.js";
 
-// ── constants ─────────────────────────────────────────────────────────────────
+// ── Design Tokens ─────────────────────────────────────────────────────────────
 const PINK = "#e91e8c";
+const PINK_LIGHT = "#fce4f3";
+const PINK_DARK = "#c2185b";
+const GREEN = "#1D9E75";
+const GREEN_LIGHT = "#e6f7ee";
 const WHITE = "#fff";
+const SURFACE = "#fafafa";
+const BORDER = "rgba(0,0,0,.07)";
 
 const STATUS_STYLE = {
   Empty: {
     bg: "transparent",
     border: "rgba(0,0,0,.15)",
-    tc: "#888780",
+    tc: "#b0aca6",
     label: "Free",
   },
   Placed: { bg: "#dbeeff", border: "#378ADD", tc: "#185FA5", label: "Placed" },
@@ -25,19 +35,14 @@ const STATUS_STYLE = {
     tc: "#854F0B",
     label: "Preparing",
   },
-  Ready: { bg: "#e6f7ee", border: "#1D9E75", tc: "#3B6D11", label: "Ready" },
+  Ready: { bg: "#e6f7ee", border: "#1D9E75", tc: "#276749", label: "Ready" },
   Delivered: {
     bg: "#e6f7ee",
     border: "#1D9E75",
-    tc: "#3B6D11",
+    tc: "#276749",
     label: "Delivered",
   },
-  Completed: {
-    bg: "#f0f0f0",
-    border: "#888780",
-    tc: "#5F5E5A",
-    label: "Completed",
-  },
+  Completed: { bg: "#f0f0f0", border: "#aaa", tc: "#666", label: "Completed" },
   Cancelled: {
     bg: "#ffebeb",
     border: "#E24B4A",
@@ -46,73 +51,133 @@ const STATUS_STYLE = {
   },
 };
 
-const TABLES_CONFIG = [
-  { id: 1, seats: 4 },
-  { id: 2, seats: 4 },
-  { id: 3, seats: 4 },
-  { id: 4, seats: 4 },
-  { id: 5, seats: 2 },
-  { id: 6, seats: 2 },
-  { id: 7, seats: 4 },
-  { id: 8, seats: 4 },
+const ACTIVE_STATUSES = ["Placed", "Preparing", "Ready", "Delivered"];
+const ALL_STATUSES = [
+  "Placed",
+  "Preparing",
+  "Ready",
+  "Delivered",
+  "Completed",
+  "Cancelled",
 ];
 
-const ACTIVE_STATUSES = ["Placed", "Preparing", "Ready", "Delivered"];
-
-// ── blink keyframe injected once ─────────────────────────────────────────────
-if (!document.getElementById("blink-style")) {
+// ── Global Styles Injected Once ───────────────────────────────────────────────
+if (!document.getElementById("tables-page-styles")) {
   const s = document.createElement("style");
-  s.id = "blink-style";
+  s.id = "tables-page-styles";
   s.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
     @keyframes blinkBorder {
       0%,100% { box-shadow: 0 0 0 0 rgba(211,47,47,0); border-color: #d32f2f; }
-      50%      { box-shadow: 0 0 0 4px rgba(211,47,47,0.35); border-color: #ff1744; }
+      50%      { box-shadow: 0 0 0 5px rgba(211,47,47,0.25); border-color: #ff1744; }
     }
-    .blink-pending { animation: blinkBorder 1.4s ease-in-out infinite; }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes pulseGreen {
+      0%,100% { box-shadow: 0 0 0 0 rgba(29,158,117,0); }
+      50%      { box-shadow: 0 0 0 5px rgba(29,158,117,0.22); }
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .tables-root * { box-sizing: border-box; font-family: 'DM Sans', sans-serif; }
+    .blink-pending  { animation: blinkBorder 1.4s ease-in-out infinite; }
+    .pulse-live     { animation: pulseGreen 2s ease-in-out infinite; }
+    .drawer-enter   { animation: slideUp .22s cubic-bezier(.4,0,.2,1) both; }
+    .table-card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
+    .btn-ghost {
+      background: none; border: 1px solid ${BORDER};
+      border-radius: 8px; padding: 6px 14px;
+      font-size: 12px; font-family: 'DM Sans',sans-serif;
+      cursor: pointer; color: #555; transition: all .15s;
+    }
+    .btn-ghost:hover { background: #f5f5f5; border-color: #ccc; }
+    .status-btn {
+      padding: 5px 13px; border-radius: 20px; font-size: 11.5px;
+      font-family: 'DM Sans',sans-serif; font-weight: 500;
+      cursor: pointer; transition: all .15s; border: 1.5px solid transparent;
+    }
+    .status-btn:hover { filter: brightness(.93); transform: scale(1.03); }
+    .status-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+      animation: fadeIn .18s ease both; backdrop-filter: blur(2px);
+    }
+    .modal-box {
+      background: ${WHITE}; border-radius: 20px; width: 420px;
+      padding: 28px; box-shadow: 0 24px 64px rgba(0,0,0,.18);
+      animation: slideUp .22s cubic-bezier(.4,0,.2,1) both;
+    }
+    .input-field {
+      width: 100%; padding: 11px 14px; border-radius: 10px;
+      border: 1.5px solid #e0e0e0; font-size: 14px;
+      font-family: 'DM Sans',sans-serif; outline: none; transition: border .15s;
+    }
+    .input-field:focus { border-color: ${PINK}; }
+    .tag {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500;
+    }
+    .spinner {
+      width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+      display: inline-block;
+    }
   `;
   document.head.appendChild(s);
 }
 
 // ── Chair ─────────────────────────────────────────────────────────────────────
 const Chair = ({ pos, occupied }) => {
-  const base = {
-    background: occupied ? "#f9c8dc" : WHITE,
-    border: `1.5px solid ${occupied ? PINK : "rgba(0,0,0,.18)"}`,
-    transition: "background .2s",
-    flexShrink: 0,
-  };
-  if (pos === "top" || pos === "bottom")
-    return (
-      <div
-        style={{
-          ...base,
-          width: 20,
-          height: 12,
-          borderRadius: pos === "top" ? "6px 6px 0 0" : "0 0 6px 6px",
-        }}
-      />
-    );
+  const isHoriz = pos === "top" || pos === "bottom";
   return (
     <div
       style={{
-        ...base,
-        width: 12,
-        height: 20,
-        borderRadius: pos === "left" ? "6px 0 0 6px" : "0 6px 6px 0",
+        background: occupied ? PINK_LIGHT : WHITE,
+        border: `1.5px solid ${occupied ? PINK : "rgba(0,0,0,.16)"}`,
+        transition: "all .2s",
+        flexShrink: 0,
+        borderRadius: isHoriz
+          ? pos === "top"
+            ? "5px 5px 0 0"
+            : "0 0 5px 5px"
+          : pos === "left"
+            ? "5px 0 0 5px"
+            : "0 5px 5px 0",
+        width: isHoriz ? 20 : 11,
+        height: isHoriz ? 11 : 20,
       }}
     />
   );
 };
 
 // ── TableCard ─────────────────────────────────────────────────────────────────
-const TableCard = ({ config, order, invoice, onClick, isSelected }) => {
+const TableCard = ({
+  config,
+  order,
+  invoice,
+  onClick,
+  isSelected,
+  tableStatus,
+  onToggleStatus,
+  onDelete,
+}) => {
   const status = order ? order.status : "Empty";
   const s = STATUS_STYLE[status] || STATUS_STYLE.Empty;
-  const occ = order && ACTIVE_STATUSES.includes(status);
-  const is4 = config.seats === 4;
+  const occ = !!(order && ACTIVE_STATUSES.includes(status));
+  const is4 = config.seats >= 4;
   const isPending = invoice?.invoiceStatus?.toLowerCase() === "pending";
-
-  const w = is4 ? 80 : 66;
+  const isActive = tableStatus === "Active";
+  const w = is4 ? 78 : 64;
   const h = is4 ? 64 : 52;
 
   return (
@@ -121,89 +186,99 @@ const TableCard = ({ config, order, invoice, onClick, isSelected }) => {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 5,
+        gap: 4,
         position: "relative",
       }}
     >
-      {/* pending alert dot */}
-      {isPending && (
-        <div
-          style={{
-            position: "absolute",
-            top: -6,
-            right: -2,
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            background: "#d32f2f",
-            border: "2px solid #fff",
-            zIndex: 2,
-            animation: "blinkBorder 1s ease-in-out infinite",
-          }}
-        />
-      )}
+      {/* Active / Inactive pill */}
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+          textTransform: "uppercase",
+          padding: "2px 8px",
+          borderRadius: 20,
+          marginBottom: 2,
+          background: isActive ? GREEN_LIGHT : "#f0f0f0",
+          color: isActive ? GREEN : "#999",
+          border: `1px solid ${isActive ? "#b2dfdb" : "#e0e0e0"}`,
+        }}
+      >
+        {isActive ? "Active" : "Inactive"}
+      </div>
 
-      {/* top chairs */}
-      <div style={{ display: "flex", gap: 6 }}>
+      {/* Chairs top */}
+      <div style={{ display: "flex", gap: 8 }}>
         <Chair pos="top" occupied={occ} />
         {is4 && <Chair pos="top" occupied={occ} />}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      {/* Middle row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {is4 && <Chair pos="left" occupied={occ} />}
 
+        {/* Table body */}
         <div
           onClick={onClick}
-          className={isPending ? "blink-pending" : ""}
+          className={`table-card-hover ${isPending ? "blink-pending" : ""}`}
           style={{
             width: w,
             height: h,
-            borderRadius: 10,
+            borderRadius: 12,
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            background: isPending ? "#fff0f5" : s.bg,
+            background: isPending ? "#fff0f5" : isSelected ? PINK_LIGHT : s.bg,
             border: `2px solid ${isSelected ? PINK : isPending ? "#d32f2f" : s.border}`,
-            transform: isSelected ? "scale(1.06)" : "scale(1)",
-            boxShadow: isSelected ? `0 0 0 3px ${PINK}33` : "none",
-            transition: "transform .15s",
+            transform: isSelected ? "scale(1.07)" : "scale(1)",
+            boxShadow: isSelected
+              ? `0 0 0 4px ${PINK}22, 0 4px 16px rgba(233,30,140,.15)`
+              : "0 2px 8px rgba(0,0,0,.05)",
+            transition: "all .18s cubic-bezier(.4,0,.2,1)",
+            opacity: isActive ? 1 : 0.55,
           }}
         >
           <div
             style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: isPending ? "#d32f2f" : s.tc,
+              fontSize: 11,
+              fontWeight: 600,
+              color: isPending ? "#d32f2f" : isSelected ? PINK_DARK : s.tc,
+              fontFamily: "'DM Mono',monospace",
+              letterSpacing: 0.5,
             }}
           >
             T{config.id}
           </div>
           <div
             style={{
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: 500,
-              letterSpacing: 0.3,
-              color: isPending ? "#d32f2f" : s.tc,
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              color: isPending ? "#d32f2f" : isSelected ? PINK : s.tc,
+              marginTop: 1,
             }}
           >
             {isPending ? "Pay Due" : s.label}
           </div>
-          {order && ACTIVE_STATUSES.includes(status) && (
+          {order && ACTIVE_STATUSES.includes(order.status) && (
             <div
               style={{
-                fontSize: 12,
-                fontWeight: 500,
+                fontSize: 11,
+                fontWeight: 600,
                 color: isPending ? "#d32f2f" : PINK,
-                marginTop: 2,
+                marginTop: 3,
+                fontFamily: "'DM Mono',monospace",
               }}
             >
-              ₹{Math.round(order.total)}
+              ₹{Math.round(order.total).toLocaleString()}
             </div>
           )}
-          {config.seats === 2 && !isPending && (
-            <div style={{ fontSize: 9, color: "#aaa", marginTop: 1 }}>
+          {config.seats === 2 && !isPending && status === "Empty" && (
+            <div style={{ fontSize: 8, color: "#ccc", marginTop: 2 }}>
               2 pax
             </div>
           )}
@@ -212,15 +287,50 @@ const TableCard = ({ config, order, invoice, onClick, isSelected }) => {
         {is4 && <Chair pos="right" occupied={occ} />}
       </div>
 
-      <div style={{ display: "flex", gap: 6 }}>
+      {/* Chairs bottom */}
+      <div style={{ display: "flex", gap: 8 }}>
         <Chair pos="bottom" occupied={occ} />
         {is4 && <Chair pos="bottom" occupied={occ} />}
+      </div>
+
+      {/* Action strip */}
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStatus(config.id);
+          }}
+          className="btn-ghost"
+          style={{
+            fontSize: 11,
+            padding: "4px 10px",
+            color: isActive ? "#c62828" : GREEN,
+            borderColor: isActive ? "#ffcdd2" : "#b2dfdb",
+          }}
+        >
+          {isActive ? "Deactivate" : "Activate"}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(config.id);
+          }}
+          className="btn-ghost"
+          style={{
+            fontSize: 11,
+            padding: "4px 10px",
+            color: "#c62828",
+            borderColor: "#ffcdd2",
+          }}
+        >
+          ✕
+        </button>
       </div>
     </div>
   );
 };
 
-// ── OrderDrawer ────────────────────────────────────────────────────────────────
+// ── OrderDrawer ───────────────────────────────────────────────────────────────
 const OrderDrawer = ({
   config,
   order,
@@ -263,151 +373,195 @@ const OrderDrawer = ({
 
   return (
     <div
+      className="drawer-enter"
       style={{
         background: WHITE,
-        border: `0.5px solid ${isPending ? "#fca5a5" : "rgba(0,0,0,.1)"}`,
-        borderRadius: 12,
-        padding: 20,
+        border: `1.5px solid ${isPending ? "#fca5a5" : BORDER}`,
+        borderRadius: 16,
+        padding: 24,
         marginTop: 20,
-        ...(isPending ? { background: "#fff8f8" } : {}),
+        boxShadow: isPending
+          ? "0 4px 32px rgba(211,47,47,.08)"
+          : "0 4px 24px rgba(0,0,0,.05)",
+        ...(isPending ? { background: "#fffbfb" } : {}),
       }}
     >
-      {/* header */}
+      {/* Header */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: 14,
+          marginBottom: 20,
         }}
       >
         <div>
-          <div style={{ fontWeight: 500, fontSize: 15 }}>
-            Table {config.id}
-            <span
-              style={{
-                fontSize: 12,
-                color: "#aaa",
-                fontWeight: 400,
-                marginLeft: 6,
-              }}
-            >
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span style={{ fontFamily: "'DM Mono',monospace", color: PINK }}>
+              T{config.id}
+            </span>
+            <span style={{ fontSize: 13, color: "#aaa", fontWeight: 400 }}>
               · {config.seats} seats
             </span>
             {isPending && (
               <span
+                className="tag"
                 style={{
-                  marginLeft: 10,
                   background: "#ffebee",
                   color: "#c62828",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "2px 10px",
-                  borderRadius: 20,
+                  border: "1px solid #ffcdd2",
                 }}
               >
-                Invoice Pending
+                ⚠ Invoice Pending
               </span>
             )}
           </div>
           {order && (
-            <div style={{ fontSize: 12, color: "#888", marginTop: 3 }}>
-              {order.orderId} · {order.user?.name || "Guest"} ·{" "}
-              {order.user?.phone || "—"}
+            <div
+              style={{
+                fontSize: 12,
+                color: "#aaa",
+                marginTop: 5,
+                fontFamily: "'DM Mono',monospace",
+              }}
+            >
+              {order.orderId}
+              {order.user?.name && (
+                <span
+                  style={{
+                    fontFamily: "'DM Sans',sans-serif",
+                    marginLeft: 8,
+                    color: "#888",
+                  }}
+                >
+                  · {order.user.name}
+                </span>
+              )}
+              {order.user?.phone && (
+                <span style={{ marginLeft: 6, color: "#aaa" }}>
+                  · {order.user.phone}
+                </span>
+              )}
             </div>
           )}
         </div>
         <button
           onClick={onClose}
           style={{
-            width: 28,
-            height: 28,
+            width: 30,
+            height: 30,
             borderRadius: "50%",
-            border: "0.5px solid rgba(0,0,0,.15)",
-            background: "#f5f5f5",
+            border: "1.5px solid #e8e8e8",
+            background: SURFACE,
             cursor: "pointer",
             fontSize: 14,
+            color: "#888",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: "#666",
+            transition: "all .15s",
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f0f0")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = SURFACE)}
         >
           ✕
         </button>
       </div>
 
+      {/* Empty table */}
       {!order ? (
-        <div style={{ textAlign: "center", padding: "32px 0", color: "#aaa" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>○</div>
-          <div style={{ fontSize: 14 }}>This table is free</div>
-          <div style={{ fontSize: 12, marginTop: 4 }}>
+        <div style={{ textAlign: "center", padding: "40px 0", color: "#ccc" }}>
+          <div style={{ fontSize: 48, marginBottom: 10 }}>○</div>
+          <div style={{ fontSize: 14, color: "#aaa" }}>Table is free</div>
+          <div style={{ fontSize: 12, marginTop: 4, color: "#ccc" }}>
             {config.seats} seats available
           </div>
         </div>
       ) : (
         <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}
         >
-          {/* LEFT: items + totals */}
+          {/* LEFT: Items + Totals */}
           <div>
             <div
               style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "#aaa",
-                letterSpacing: 0.5,
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#bbb",
+                letterSpacing: 1.2,
                 textTransform: "uppercase",
-                marginBottom: 10,
+                marginBottom: 12,
               }}
             >
-              Order items
+              Order Items
             </div>
-            {order.items?.map((item, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "8px 0",
-                  borderBottom: "0.5px solid rgba(0,0,0,.06)",
-                  fontSize: 13,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {order.items?.map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "9px 0",
+                    borderBottom: "1px solid #f5f5f5",
+                    fontSize: 13,
+                  }}
+                >
                   <div
+                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                  >
+                    <div
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 8,
+                        background: PINK_LIGHT,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: PINK,
+                        fontFamily: "'DM Mono',monospace",
+                      }}
+                    >
+                      {item.qty}
+                    </div>
+                    <span style={{ color: "#333" }}>{item.name}</span>
+                  </div>
+                  <span
                     style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 6,
-                      background: "#f5f5f5",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 13,
                       fontWeight: 500,
-                      color: PINK,
+                      fontFamily: "'DM Mono',monospace",
+                      fontSize: 13,
                     }}
                   >
-                    {item.qty}
-                  </div>
-                  <span>{item.name}</span>
+                    ₹{(item.price * item.qty).toLocaleString()}
+                  </span>
                 </div>
-                <span style={{ fontWeight: 500 }}>
-                  ₹{item.price * item.qty}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
+
+            {/* Totals */}
             <div
               style={{
-                borderTop: "0.5px solid rgba(0,0,0,.08)",
-                marginTop: 12,
-                paddingTop: 12,
+                marginTop: 14,
+                paddingTop: 14,
+                borderTop: "1.5px solid #f0f0f0",
               }}
             >
               {[
-                { l: "Subtotal", v: `₹${subtotal}` },
-                { l: "GST (18%)", v: `₹${tax}` },
+                { l: "Subtotal", v: `₹${subtotal.toLocaleString()}` },
+                { l: "GST (18%)", v: `₹${tax.toLocaleString()}` },
               ].map((r) => (
                 <div
                   key={r.l}
@@ -415,222 +569,213 @@ const OrderDrawer = ({
                     display: "flex",
                     justifyContent: "space-between",
                     fontSize: 12,
-                    color: "#888",
-                    marginBottom: 5,
+                    color: "#aaa",
+                    marginBottom: 6,
                   }}
                 >
                   <span>{r.l}</span>
-                  <span>{r.v}</span>
+                  <span style={{ fontFamily: "'DM Mono',monospace" }}>
+                    {r.v}
+                  </span>
                 </div>
               ))}
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  fontWeight: 500,
-                  fontSize: 15,
-                  marginTop: 8,
+                  fontWeight: 600,
+                  fontSize: 16,
+                  marginTop: 10,
                 }}
               >
                 <span>Total</span>
-                <span style={{ color: isPending ? "#d32f2f" : PINK }}>
-                  ₹{Math.round(order.total)}
+                <span
+                  style={{
+                    color: isPending ? "#d32f2f" : PINK,
+                    fontFamily: "'DM Mono',monospace",
+                  }}
+                >
+                  ₹{Math.round(order.total).toLocaleString()}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: badges + status + invoice actions */}
+          {/* RIGHT: Status + Invoice */}
           <div>
-            {/* badges */}
+            {/* Status badges */}
             <div
               style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "#aaa",
-                letterSpacing: 0.5,
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#bbb",
+                letterSpacing: 1.2,
                 textTransform: "uppercase",
                 marginBottom: 10,
               }}
             >
-              Status
-            </div>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-                marginBottom: 16,
-              }}
-            >
-              <span
-                style={{
-                  background: s.bg,
-                  color: s.tc,
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                }}
-              >
-                {order.status}
-              </span>
-              <span
-                style={{
-                  background: "#FBEAF0",
-                  color: "#993556",
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                }}
-              >
-                Dining
-              </span>
-              <span
-                style={{
-                  background:
-                    order.paymentStatus === "Paid" ? "#EAF3DE" : "#FAEEDA",
-                  color: order.paymentStatus === "Paid" ? "#3B6D11" : "#854F0B",
-                  padding: "3px 10px",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                }}
-              >
-                {order.paymentStatus}
-              </span>
-            </div>
-
-            {/* order status update */}
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "#aaa",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
-              Update order
+              Current Status
             </div>
             <div
               style={{
                 display: "flex",
                 gap: 6,
                 flexWrap: "wrap",
-                marginBottom: 18,
+                marginBottom: 20,
               }}
             >
-              {[
-                "Placed",
-                "Preparing",
-                "Ready",
-                "Delivered",
-                "Completed",
-                "Cancelled",
-              ]
-                .filter((st) => st !== order.status)
-                .map((st) => {
-                  const stl = STATUS_STYLE[st] || {
-                    bg: "#f0f0f0",
-                    color: "#555",
-                  };
-                  return (
-                    <button
-                      key={st}
-                      onClick={() => handleStatus(st)}
-                      disabled={updating}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: 20,
-                        fontSize: 12,
-                        cursor: "pointer",
-                        border: `0.5px solid ${stl.tc}`,
-                        background: stl.bg,
-                        color: stl.tc,
-                        fontWeight: 500,
-                        opacity: updating ? 0.5 : 1,
-                      }}
-                    >
-                      {st}
-                    </button>
-                  );
-                })}
+              <span
+                className="tag"
+                style={{
+                  background: s.bg,
+                  color: s.tc,
+                  border: `1.5px solid ${s.border}`,
+                }}
+              >
+                {order.status}
+              </span>
+              <span
+                className="tag"
+                style={{
+                  background: "#FBEAF0",
+                  color: "#993556",
+                  border: "1.5px solid #f5b8d0",
+                }}
+              >
+                Dining
+              </span>
+              <span
+                className="tag"
+                style={{
+                  background:
+                    order.paymentStatus === "Paid" ? GREEN_LIGHT : "#fff3e0",
+                  color: order.paymentStatus === "Paid" ? "#276749" : "#854F0B",
+                  border: `1.5px solid ${order.paymentStatus === "Paid" ? "#a5d6a7" : "#ffcc80"}`,
+                }}
+              >
+                {order.paymentStatus}
+              </span>
             </div>
 
-            {/* invoice section */}
-            {invoice && (
+            {/* Update order status */}
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#bbb",
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Update Order
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+                marginBottom: 22,
+              }}
+            >
+              {ALL_STATUSES.filter((st) => st !== order.status).map((st) => {
+                const stl = STATUS_STYLE[st] || {
+                  bg: "#f0f0f0",
+                  border: "#aaa",
+                  tc: "#555",
+                };
+                return (
+                  <button
+                    key={st}
+                    className="status-btn"
+                    onClick={() => handleStatus(st)}
+                    disabled={updating}
+                    style={{
+                      background: stl.bg,
+                      borderColor: stl.border,
+                      color: stl.tc,
+                    }}
+                  >
+                    {updating ? <span className="spinner" /> : st}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Invoice section */}
+            {invoice ? (
               <>
                 <div
                   style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: "#aaa",
-                    letterSpacing: 0.5,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: "#bbb",
+                    letterSpacing: 1.2,
                     textTransform: "uppercase",
                     marginBottom: 10,
                   }}
                 >
                   Invoice
                 </div>
-
-                {/* invoice info */}
                 <div
                   style={{
-                    background: isPending ? "#fff0f5" : "#f8fdf8",
-                    border: `0.5px solid ${isPending ? "#fca5a5" : "#c3e6cb"}`,
-                    borderRadius: 10,
-                    padding: 12,
+                    background: isPending ? "#fff0f5" : GREEN_LIGHT,
+                    border: `1.5px solid ${isPending ? "#fca5a5" : "#a5d6a7"}`,
+                    borderRadius: 12,
+                    padding: 14,
                     marginBottom: 12,
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 13,
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span style={{ color: "#888" }}>Invoice ID</span>
-                    <span
-                      style={{ fontWeight: 500, fontSize: 11, color: "#555" }}
+                  {[
+                    {
+                      l: "Invoice ID",
+                      v: `…${invoice._id?.slice(-8)}`,
+                      mono: true,
+                    },
+                    {
+                      l: "Amount",
+                      v: `₹${Math.round(invoice.total || order.total).toLocaleString()}`,
+                      mono: true,
+                    },
+                  ].map((r) => (
+                    <div
+                      key={r.l}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 12,
+                        marginBottom: 8,
+                        color: "#555",
+                      }}
                     >
-                      …{invoice._id?.slice(-8)}
-                    </span>
-                  </div>
+                      <span style={{ color: "#aaa" }}>{r.l}</span>
+                      <span
+                        style={{
+                          fontWeight: 500,
+                          fontFamily: r.mono
+                            ? "'DM Mono',monospace"
+                            : undefined,
+                        }}
+                      >
+                        {r.v}
+                      </span>
+                    </div>
+                  ))}
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "space-between",
-                      fontSize: 13,
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span style={{ color: "#888" }}>Amount</span>
-                    <span style={{ fontWeight: 500 }}>
-                      ₹{Math.round(invoice.total || order.total)}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 13,
+                      fontSize: 12,
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ color: "#888" }}>Status</span>
+                    <span style={{ color: "#aaa" }}>Status</span>
                     <span
+                      className="tag"
                       style={{
-                        background: isPending ? "#ffebee" : "#EAF3DE",
-                        color: isPending ? "#c62828" : "#3B6D11",
-                        padding: "2px 10px",
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 600,
+                        background: isPending ? "#ffebee" : GREEN_LIGHT,
+                        color: isPending ? "#c62828" : "#276749",
+                        border: `1px solid ${isPending ? "#ffcdd2" : "#a5d6a7"}`,
                         textTransform: "capitalize",
                       }}
                     >
@@ -639,7 +784,6 @@ const OrderDrawer = ({
                   </div>
                 </div>
 
-                {/* invoice action buttons — only when pending */}
                 {isPending && (
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
@@ -647,52 +791,58 @@ const OrderDrawer = ({
                       disabled={invUpdating}
                       style={{
                         flex: 1,
-                        padding: "10px",
+                        padding: "11px",
                         background: "#2e7d32",
                         color: WHITE,
                         border: "none",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         fontWeight: 600,
                         cursor: "pointer",
                         fontSize: 13,
+                        fontFamily: "'DM Sans',sans-serif",
                         opacity: invUpdating ? 0.5 : 1,
+                        transition: "opacity .15s",
                       }}
                     >
-                      Mark Paid
+                      {invUpdating ? (
+                        <span className="spinner" />
+                      ) : (
+                        "✓ Mark Paid"
+                      )}
                     </button>
                     <button
                       onClick={() => handleInvoiceStatus("cancelled")}
                       disabled={invUpdating}
                       style={{
                         flex: 1,
-                        padding: "10px",
+                        padding: "11px",
                         background: "#c62828",
                         color: WHITE,
                         border: "none",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         fontWeight: 600,
                         cursor: "pointer",
                         fontSize: 13,
+                        fontFamily: "'DM Sans',sans-serif",
                         opacity: invUpdating ? 0.5 : 1,
+                        transition: "opacity .15s",
                       }}
                     >
-                      Cancel
+                      {invUpdating ? <span className="spinner" /> : "✕ Cancel"}
                     </button>
                   </div>
                 )}
               </>
-            )}
-
-            {/* no invoice yet */}
-            {!invoice && (
+            ) : (
               <div
                 style={{
-                  background: "#f5f5f5",
+                  background: "#f8f8f8",
                   borderRadius: 10,
-                  padding: 12,
+                  padding: 14,
                   fontSize: 12,
-                  color: "#aaa",
+                  color: "#bbb",
                   textAlign: "center",
+                  border: `1px dashed #e0e0e0`,
                 }}
               >
                 No invoice generated yet
@@ -705,28 +855,72 @@ const OrderDrawer = ({
   );
 };
 
-// ── main page ─────────────────────────────────────────────────────────────────
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+const StatCard = ({ label, val, color, sub }) => (
+  <div
+    style={{
+      background: WHITE,
+      borderRadius: 12,
+      padding: "14px 18px",
+      border: `1.5px solid ${BORDER}`,
+      boxShadow: "0 2px 8px rgba(0,0,0,.04)",
+    }}
+  >
+    <div
+      style={{
+        fontSize: 22,
+        fontWeight: 600,
+        color: color || "#111",
+        fontFamily: "'DM Mono',monospace",
+      }}
+    >
+      {val}
+    </div>
+    <div
+      style={{
+        fontSize: 11,
+        color: "#aaa",
+        marginTop: 3,
+        fontWeight: 500,
+        letterSpacing: 0.3,
+      }}
+    >
+      {label}
+    </div>
+    {sub && (
+      <div style={{ fontSize: 10, color: "#ccc", marginTop: 2 }}>{sub}</div>
+    )}
+  </div>
+);
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function TablesPage() {
-  const [tableMap, setTableMap] = useState({}); // tableNo → order
-  const [invoiceMap, setInvoiceMap] = useState({}); // tableNo → invoice info
+  const [tables, setTables] = useState([]);
+  const [tableMap, setTableMap] = useState({});
+  const [invoiceMap, setInvoiceMap] = useState({});
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [showModal, setShowModal] = useState(false);
+  const [newTableNo, setNewTableNo] = useState("");
+  const [newSeats, setNewSeats] = useState("4");
+  const [creating, setCreating] = useState(false);
+
+  // ── fetch ──────────────────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-
-      // Fetch orders + invoices in parallel
-      const [ordersRes, invoicesRes] = await Promise.all([
+      const [ordersRes, invoicesRes, tablesRes] = await Promise.all([
         getAllOrders({ limit: 100 }),
-        getAllInvoices().catch(() => ({ data: { invoices: [] } })), // graceful fail
+        getAllInvoices().catch(() => ({ data: { invoices: [] } })),
+        getAllTables().catch(() => ({ data: { tables: [] } })),
       ]);
 
       const orders = ordersRes?.data?.orders || [];
       const invoices = invoicesRes?.data?.invoices || [];
+      const dbTables = tablesRes?.data?.tables || [];
 
-      // Build order map: only active dining orders with tableNo
       const oMap = {};
       orders
         .filter(
@@ -735,16 +929,11 @@ export default function TablesPage() {
             o.tableNo &&
             !["Completed", "Cancelled"].includes(o.status),
         )
-        .forEach((o) => {
-          oMap[Number(o.tableNo)] = o;
-        });
+        .forEach((o) => (oMap[Number(o.tableNo)] = o));
 
-      // Build invoice map: link each invoice to a table via orderId
       const iMap = {};
       invoices.forEach((inv) => {
-        // inv.orders is array of order ObjectIds
         const orderIds = inv.orders?.map(String) || [];
-        // Find which table this invoice belongs to
         for (const [tableNo, order] of Object.entries(oMap)) {
           if (orderIds.includes(String(order._id))) {
             iMap[Number(tableNo)] = {
@@ -756,9 +945,10 @@ export default function TablesPage() {
         }
       });
 
+      setTables(dbTables);
       setTableMap(oMap);
       setInvoiceMap(iMap);
-    } catch (e) {
+    } catch {
       setError("Failed to load table data");
       toast.error("Could not load tables");
     } finally {
@@ -768,10 +958,11 @@ export default function TablesPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchData, 30000);
+    return () => clearInterval(iv);
   }, [fetchData]);
 
+  // ── handlers ───────────────────────────────────────────────────────────────
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       await updateOrderStatus(orderId, newStatus);
@@ -793,45 +984,109 @@ export default function TablesPage() {
     }
   };
 
-  const selectedConfig = selected
-    ? TABLES_CONFIG.find((t) => t.id === selected)
-    : null;
-  const selectedOrder = selected ? tableMap[selected] || null : null;
-  const selectedInvoice = selected ? invoiceMap[selected] || null : null;
+  const handleToggleStatus = async (tableNo) => {
+    const table = tables.find((t) => t.tableNo === tableNo);
+    if (!table) return;
+    const newStatus = table.status === "Active" ? "Inactive" : "Active";
+    try {
+      await updateTable(tableNo, { status: newStatus });
+      toast.success(`Table ${tableNo} → ${newStatus}`);
+      fetchData();
+    } catch {
+      toast.error("Failed to update table status");
+    }
+  };
 
-  const occupied = TABLES_CONFIG.filter((t) => tableMap[t.id]).length;
+  const handleDelete = async (tableNo) => {
+    if (!window.confirm(`Delete Table ${tableNo} permanently?`)) return;
+    try {
+      await deleteTable(tableNo);
+      toast.success(`Table ${tableNo} deleted`);
+      fetchData();
+      if (selected === tableNo) setSelected(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete table");
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!newTableNo) return toast.error("Table number is required");
+    setCreating(true);
+    try {
+      await createTable({
+        tableNo: parseInt(newTableNo),
+        seats: parseInt(newSeats),
+      });
+      toast.success(`Table ${newTableNo} created`);
+      setShowModal(false);
+      setNewTableNo("");
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to create table");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  // ── derived ────────────────────────────────────────────────────────────────
+  const activeTables = tables.filter((t) => t.status === "Active" || !t.status);
+  const occupied = activeTables.filter((t) => tableMap[t.tableNo]).length;
   const revenue = Object.values(tableMap).reduce(
     (s, o) => s + Number(o.total || 0),
     0,
   );
-  const covers = TABLES_CONFIG.filter((t) => tableMap[t.id]).reduce(
-    (s, t) => s + t.seats,
-    0,
-  );
+  const covers = Object.values(tableMap).reduce((s, o) => {
+    const tbl = tables.find((t) => t.tableNo === Number(o.tableNo));
+    return s + (tbl?.seats || 0);
+  }, 0);
   const pendingCount = Object.values(invoiceMap).filter(
     (i) => i.invoiceStatus?.toLowerCase() === "pending",
   ).length;
+  const selectedConf = selected
+    ? tables.find((t) => t.tableNo === selected)
+    : null;
+  const selectedOrder = selected ? tableMap[selected] || null : null;
+  const selectedInv = selected ? invoiceMap[selected] || null : null;
 
+  // ── loading / error ────────────────────────────────────────────────────────
   if (loading)
     return (
-      <div style={{ textAlign: "center", padding: "100px", color: "#aaa" }}>
-        Loading floor plan…
+      <div
+        className="tables-root"
+        style={{ textAlign: "center", padding: "100px", color: "#ccc" }}
+      >
+        <div
+          className="spinner"
+          style={{
+            width: 32,
+            height: 32,
+            borderWidth: 3,
+            borderColor: "rgba(233,30,140,.2)",
+            borderTopColor: PINK,
+            margin: "0 auto 16px",
+          }}
+        />
+        <div style={{ fontSize: 14 }}>Loading floor plan…</div>
       </div>
     );
   if (error)
     return (
-      <div style={{ textAlign: "center", padding: "80px", color: "#c62828" }}>
-        <div style={{ fontSize: 16, marginBottom: 12 }}>{error}</div>
+      <div
+        className="tables-root"
+        style={{ textAlign: "center", padding: "80px", color: "#c62828" }}
+      >
+        <div style={{ fontSize: 16, marginBottom: 14 }}>{error}</div>
         <button
           onClick={fetchData}
           style={{
-            padding: "10px 24px",
+            padding: "10px 28px",
             background: PINK,
             color: WHITE,
             border: "none",
             borderRadius: 25,
-            cursor: "pointer",
             fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "'DM Sans',sans-serif",
           }}
         >
           Retry
@@ -840,131 +1095,141 @@ export default function TablesPage() {
     );
 
   return (
-    <>
-      {/* page header */}
+    <div className="tables-root">
+      {/* ── Header ── */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: 16,
+          marginBottom: 20,
         }}
       >
         <div>
-          <div style={{ fontSize: 20, fontWeight: 500 }}>Table status</div>
-          <div style={{ fontSize: 13, color: "#888", marginTop: 3 }}>
-            Adda Cafe — dining floor · click any table to view order
+          <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: -0.3 }}>
+            Table Management
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "#aaa",
+              marginTop: 4,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span>Adda Cafe — Dining Floor</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span
+                className="pulse-live"
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  background: GREEN,
+                  display: "inline-block",
+                }}
+              />
+              <span style={{ color: GREEN, fontWeight: 500 }}>Live</span>
+              <span style={{ color: "#ccc" }}>· every 30s</span>
+            </span>
+            {pendingCount > 0 && (
+              <span
+                className="tag blink-pending"
+                style={{
+                  background: "#ffebee",
+                  color: "#c62828",
+                  border: "1px solid #ffcdd2",
+                  fontSize: 11,
+                }}
+              >
+                {pendingCount} invoice{pendingCount > 1 ? "s" : ""} pending
+              </span>
+            )}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {pendingCount > 0 && (
-            <span
-              style={{
-                background: "#ffebee",
-                color: "#c62828",
-                fontSize: 12,
-                fontWeight: 600,
-                padding: "4px 12px",
-                borderRadius: 20,
-                border: "0.5px solid #fca5a5",
-                animation: "blinkBorder 1.4s ease-in-out infinite",
-              }}
-            >
-              {pendingCount} invoice{pendingCount > 1 ? "s" : ""} pending
-            </span>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#1D9E75",
-              }}
-            />
-            <span style={{ fontSize: 12, color: "#1D9E75", fontWeight: 500 }}>
-              Live
-            </span>
-            <span style={{ fontSize: 12, color: "#aaa", marginLeft: 4 }}>
-              every 30s
-            </span>
-          </div>
-        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          style={{
+            padding: "10px 22px",
+            background: PINK,
+            color: WHITE,
+            border: "none",
+            borderRadius: 25,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontSize: 13,
+            fontFamily: "'DM Sans',sans-serif",
+            boxShadow: `0 4px 16px ${PINK}44`,
+            transition: "all .15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = PINK_DARK;
+            e.currentTarget.style.transform = "translateY(-1px)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = PINK;
+            e.currentTarget.style.transform = "translateY(0)";
+          }}
+        >
+          + New Table
+        </button>
       </div>
 
-      {/* stats */}
+      {/* ── Stats ── */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5,minmax(0,1fr))",
+          gridTemplateColumns: "repeat(5,1fr)",
           gap: 10,
-          marginBottom: 16,
+          marginBottom: 22,
         }}
       >
-        {[
-          { label: "Occupied", val: occupied, color: PINK },
-          {
-            label: "Free",
-            val: TABLES_CONFIG.length - occupied,
-            color: "#1D9E75",
-          },
-          {
-            label: "Active revenue",
-            val: `₹${Math.round(revenue).toLocaleString()}`,
-          },
-          { label: "Covers seated", val: covers },
-          {
-            label: "Invoices pending",
-            val: pendingCount,
-            color: pendingCount > 0 ? "#c62828" : "#3B6D11",
-          },
-        ].map((s, i) => (
-          <div
-            key={i}
-            style={{
-              background: WHITE,
-              border: `0.5px solid ${s.color === "c62828" ? "#fca5a5" : "rgba(0,0,0,.08)"}`,
-              borderRadius: 8,
-              padding: "10px 14px",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 20,
-                fontWeight: 500,
-                color: s.color || "var(--color-text-primary,#111)",
-              }}
-            >
-              {s.val}
-            </div>
-            <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-              {s.label}
-            </div>
-          </div>
-        ))}
+        <StatCard label="Occupied" val={occupied} color={PINK} />
+        <StatCard
+          label="Free"
+          val={activeTables.length - occupied}
+          color={GREEN}
+        />
+        <StatCard
+          label="Active Revenue"
+          val={`₹${Math.round(revenue).toLocaleString()}`}
+        />
+        <StatCard label="Covers Seated" val={covers} />
+        <StatCard
+          label="Pending Invoices"
+          val={pendingCount}
+          color={pendingCount > 0 ? "#c62828" : GREEN}
+        />
       </div>
 
-      {/* legend */}
+      {/* ── Legend ── */}
       <div
         style={{
           display: "flex",
-          gap: 12,
+          gap: 16,
           flexWrap: "wrap",
           marginBottom: 16,
-          padding: "10px 14px",
+          padding: "10px 16px",
           background: WHITE,
           borderRadius: 10,
-          border: "0.5px solid rgba(0,0,0,.08)",
+          border: `1.5px solid ${BORDER}`,
         }}
       >
         {[
-          { label: "Free", bg: WHITE, border: "rgba(0,0,0,.2)" },
+          { label: "Free", bg: WHITE, border: "rgba(0,0,0,.18)" },
           { label: "Placed", bg: "#dbeeff", border: "#378ADD" },
           { label: "Preparing", bg: "#fff3e0", border: "#BA7517" },
-          { label: "Ready", bg: "#e6f7ee", border: "#1D9E75" },
-          { label: "Delivered", bg: "#e6f7ee", border: "#1D9E75" },
-          { label: "Invoice pending", bg: "#fff0f5", border: "#d32f2f" },
-          { label: "Occupied chair", bg: "#f9c8dc", border: PINK },
+          { label: "Ready", bg: GREEN_LIGHT, border: GREEN },
+          { label: "Delivered", bg: GREEN_LIGHT, border: GREEN },
+          {
+            label: "Invoice pending",
+            bg: "#fff0f5",
+            border: "#d32f2f",
+            blink: true,
+          },
+          { label: "Occupied chair", bg: PINK_LIGHT, border: PINK },
         ].map((l) => (
           <div
             key={l.label}
@@ -973,19 +1238,17 @@ export default function TablesPage() {
               alignItems: "center",
               gap: 6,
               fontSize: 12,
-              color: "#777",
+              color: "#888",
             }}
           >
             <div
+              className={l.blink ? "blink-pending" : ""}
               style={{
                 width: 10,
                 height: 10,
                 borderRadius: 3,
                 background: l.bg,
                 border: `1.5px solid ${l.border}`,
-                ...(l.label === "Invoice pending"
-                  ? { animation: "blinkBorder 1.4s ease-in-out infinite" }
-                  : {}),
               }}
             />
             {l.label}
@@ -993,32 +1256,33 @@ export default function TablesPage() {
         ))}
       </div>
 
-      {/* floor plan */}
+      {/* ── Floor Plan ── */}
       <div
         style={{
-          background: "var(--color-background-secondary,#f5f3ef)",
-          borderRadius: 16,
-          padding: 28,
-          border: "0.5px solid rgba(0,0,0,.08)",
+          background: "#f7f5f1",
+          borderRadius: 18,
+          padding: 32,
+          border: `1.5px solid rgba(0,0,0,.07)`,
+          boxShadow: "inset 0 2px 12px rgba(0,0,0,.03)",
         }}
       >
-        {/* wall */}
+        {/* Wall */}
         <div
           style={{
             height: 6,
-            background: "rgba(0,0,0,.18)",
+            background: "rgba(0,0,0,.16)",
             borderRadius: "4px 4px 0 0",
             marginBottom: 0,
           }}
         />
 
-        {/* windows */}
+        {/* Windows */}
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: 10,
             justifyContent: "center",
-            padding: "10px 0 14px",
+            padding: "12px 0 16px",
             borderBottom: "1px dashed rgba(0,0,0,.1)",
           }}
         >
@@ -1026,12 +1290,12 @@ export default function TablesPage() {
             <div
               key={i}
               style={{
-                width: 40,
+                width: 44,
                 height: 20,
                 borderRadius: 3,
-                background: WHITE,
-                border: "1.5px solid rgba(0,0,0,.2)",
-                ...(i === 1 ? { marginRight: 16 } : {}),
+                background: "rgba(200,225,255,.6)",
+                border: "1.5px solid rgba(0,0,0,.15)",
+                ...(i === 1 ? { marginRight: 18 } : {}),
               }}
             />
           ))}
@@ -1039,68 +1303,74 @@ export default function TablesPage() {
         <div
           style={{
             fontSize: 10,
-            color: "#aaa",
+            color: "#bbb",
             letterSpacing: 2,
             textTransform: "uppercase",
             textAlign: "center",
-            paddingTop: 10,
-            paddingBottom: 16,
+            padding: "10px 0 20px",
           }}
         >
           Window side
         </div>
 
-        {/* tables */}
+        {/* Tables grid */}
         <div
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 32,
+            gap: 40,
             justifyContent: "center",
-            paddingBottom: 24,
+            paddingBottom: 28,
           }}
         >
-          {TABLES_CONFIG.map((t) => (
-            <TableCard
-              key={t.id}
-              config={t}
-              order={tableMap[t.id] || null}
-              invoice={invoiceMap[t.id] || null}
-              onClick={() => setSelected(selected === t.id ? null : t.id)}
-              isSelected={selected === t.id}
-            />
-          ))}
+          {tables
+            .sort((a, b) => a.tableNo - b.tableNo)
+            .map((t) => (
+              <TableCard
+                key={t.tableNo}
+                config={{ id: t.tableNo, seats: t.seats }}
+                order={tableMap[t.tableNo] || null}
+                invoice={invoiceMap[t.tableNo] || null}
+                onClick={() =>
+                  setSelected(selected === t.tableNo ? null : t.tableNo)
+                }
+                isSelected={selected === t.tableNo}
+                tableStatus={t.status || "Active"}
+                onToggleStatus={handleToggleStatus}
+                onDelete={handleDelete}
+              />
+            ))}
         </div>
 
-        {/* divider */}
+        {/* Dashed divider */}
         <div
           style={{
             width: "100%",
             height: 1,
-            margin: "0 0 16px",
+            margin: "0 0 18px",
             background:
               "repeating-linear-gradient(90deg,rgba(0,0,0,.1) 0,rgba(0,0,0,.1) 8px,transparent 8px,transparent 16px)",
           }}
         />
 
-        {/* entrance */}
+        {/* Entrance */}
         <div style={{ textAlign: "center" }}>
           <div
             style={{
               fontSize: 10,
-              color: "#aaa",
+              color: "#bbb",
               letterSpacing: 2,
               textTransform: "uppercase",
               marginBottom: 8,
             }}
           >
-            Counter &amp; entrance
+            Counter &amp; Entrance
           </div>
           <div
             style={{
-              width: 36,
+              width: 40,
               height: 6,
-              background: "rgba(0,0,0,.25)",
+              background: "rgba(0,0,0,.22)",
               borderRadius: 3,
               margin: "0 auto",
             }}
@@ -1108,17 +1378,118 @@ export default function TablesPage() {
         </div>
       </div>
 
-      {/* order drawer */}
-      {selected && selectedConfig && (
+      {/* ── Order Drawer ── */}
+      {selected && selectedConf && (
         <OrderDrawer
-          config={selectedConfig}
+          config={{ id: selectedConf.tableNo, seats: selectedConf.seats }}
           order={selectedOrder}
-          invoice={selectedInvoice}
+          invoice={selectedInv}
           onClose={() => setSelected(null)}
           onStatusChange={handleStatusChange}
           onInvoiceStatusChange={handleInvoiceStatusChange}
         />
       )}
-    </>
+
+      {/* ── Create Modal ── */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+              Add New Table
+            </div>
+            <div style={{ fontSize: 13, color: "#aaa", marginBottom: 22 }}>
+              Configure the new table for the dining floor.
+            </div>
+
+            <label
+              style={{
+                fontSize: 12,
+                color: "#888",
+                fontWeight: 500,
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
+              Table Number
+            </label>
+            <input
+              type="number"
+              placeholder="e.g. 9"
+              value={newTableNo}
+              onChange={(e) => setNewTableNo(e.target.value)}
+              className="input-field"
+              style={{ marginBottom: 16 }}
+            />
+
+            <label
+              style={{
+                fontSize: 12,
+                color: "#888",
+                fontWeight: 500,
+                display: "block",
+                marginBottom: 6,
+              }}
+            >
+              Seating Capacity
+            </label>
+            <select
+              value={newSeats}
+              onChange={(e) => setNewSeats(e.target.value)}
+              className="input-field"
+              style={{ marginBottom: 24 }}
+            >
+              <option value="2">2 Seats</option>
+              <option value="4">4 Seats</option>
+              <option value="6">6 Seats</option>
+            </select>
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setShowModal(false)}
+                className="btn-ghost"
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 10,
+                  justifyContent: "center",
+                  display: "flex",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={creating}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 10,
+                  background: PINK,
+                  color: WHITE,
+                  border: "none",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontFamily: "'DM Sans',sans-serif",
+                  opacity: creating ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                {creating ? (
+                  <>
+                    <span className="spinner" /> Creating…
+                  </>
+                ) : (
+                  "Create Table"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

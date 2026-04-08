@@ -14,15 +14,21 @@ import InvoicesPage from "./InvoicesPage.jsx";
 import AnalyticsPage from "./AnalyticsPage.jsx";
 
 import { PINK, W } from "./shared";
+import ChefsPage from "./ChefsPage.jsx";
+import ProfilePage from "./ProfilePage.jsx";
+import HelpPage from "./HelpPage.jsx";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard" },
   { id: "orders", label: "Orders" },
   { id: "tables", label: "Table Status" },
   { id: "menu", label: "Menu Items" },
+  { id: "chefs", label: "Chefs" },
   { id: "users", label: "Users" },
   { id: "invoices", label: "Invoices" },
   { id: "analytics", label: "Revenue" },
+  { id: "profile", label: "Profile" }, // ← NEW
+  { id: "help", label: "Help & Support" },
 ];
 
 export default function AdminLayout() {
@@ -179,11 +185,14 @@ export default function AdminLayout() {
             )} */}
             {page === "tables" && <TablesPage />}
             {page === "menu" && <MenuAdminPage />}
+            {page === "chefs" && <ChefsPage />}
             {page === "users" && <UsersPage />}
             {page === "invoices" && (
               <InvoicesPage data={dashboardData?.recentOrders} />
             )}
             {page === "analytics" && <AnalyticsPage data={dashboardData} />}
+            {page === "profile" && <ProfilePage />} {/* ← NEW */}
+            {page === "help" && <HelpPage />}
           </>
         )}
       </main>
