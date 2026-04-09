@@ -712,12 +712,12 @@ function ItemModal({ item, categories, onClose, onSaved, onCategoryCreated }) {
               onFileChange={setImgFile}
             />
 
-            <ImageUploadBox
+            {/* <ImageUploadBox
               label="Category image"
               currentUrl={form.categoryImage}
               file={catFile}
               onFileChange={setCatFile}
-            />
+            /> */}
 
             <div>
               <label style={lbl}>Rating (1–5)</label>
