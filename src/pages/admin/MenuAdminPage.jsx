@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import {
   getMenu,
@@ -6,12 +6,21 @@ import {
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
+  createCategory,
 } from "../../services/menuService.js";
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
 const PINK = "#e91e8c";
 const WHITE = "#fff";
+const PINK_BG = "#fbeaf0";
+const GREEN = "#1D9E75";
 
-// ── shared mini-components ─────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const normalizeCats = (responseData) => {
+  const list = responseData?.data || responseData || [];
+  return list.map((c) => (typeof c === "string" ? c : c.name)).filter(Boolean);
+};
+
 const Badge = ({ label, type }) => {
   const MAP = {
     Ready: { bg: "#EAF3DE", color: "#3B6D11" },
@@ -35,84 +44,150 @@ const Badge = ({ label, type }) => {
   );
 };
 
-const CATEGORIES = ["Burger", "Biryani", "Pizza", "Wrap", "Rice", "Drinks"];
 const TAGS = ["Veg", "Non Veg"];
-
 const EMPTY_FORM = {
   name: "",
   price: "",
   originalPrice: "",
   description: "",
-  category: "Burger",
+  category: "",
   tag: "Veg",
-  image: "🍔",
-  categoryImage: "🍔",
   isAvailable: true,
   rating: 4.0,
 };
 
-// ── modal ──────────────────────────────────────────────────────────────────
-function ItemModal({ item, onClose, onSaved }) {
-  const isEdit = !!item?._id;
-  const [form, setForm] = useState(
-    isEdit
-      ? { ...item, price: item.price, originalPrice: item.originalPrice || "" }
-      : { ...EMPTY_FORM },
-  );
-  const [loading, setLoading] = useState(false);
+// ── Image Upload Box ──────────────────────────────────────────────────────────
+function ImageUploadBox({ label, currentUrl, file, onFileChange }) {
+  const ref = useRef(null);
+  const preview = file ? URL.createObjectURL(file) : currentUrl;
 
-  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  return (
+    <div>
+      <label
+        style={{
+          fontSize: 12,
+          color: "#666",
+          display: "block",
+          marginBottom: 5,
+          fontWeight: 600,
+        }}
+      >
+        {label}
+      </label>
+      <div
+        onClick={() => ref.current.click()}
+        style={{
+          width: "100%",
+          height: 110,
+          borderRadius: 10,
+          border: `2px dashed ${file || currentUrl ? PINK : "#ddd"}`,
+          cursor: "pointer",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: preview ? PINK_BG : "#fafafa",
+          overflow: "hidden",
+          position: "relative",
+          transition: "border-color .2s",
+        }}
+      >
+        {preview ? (
+          <>
+            <img
+              src={preview}
+              alt="preview"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                bottom: 4,
+                right: 4,
+                background: "rgba(0,0,0,.5)",
+                color: WHITE,
+                fontSize: 10,
+                padding: "2px 6px",
+                borderRadius: 6,
+              }}
+            >
+              Change
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 26, marginBottom: 4 }}>📷</div>
+            <div style={{ fontSize: 11, color: "#aaa" }}>
+              Click to upload image
+            </div>
+            <div style={{ fontSize: 10, color: "#bbb", marginTop: 2 }}>
+              JPG, PNG, WEBP · max 5MB
+            </div>
+          </>
+        )}
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => onFileChange(e.target.files[0] || null)}
+      />
+      {file && (
+        <button
+          onClick={() => onFileChange(null)}
+          style={{
+            marginTop: 5,
+            fontSize: 11,
+            color: "#A32D2D",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          Remove new image
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Category Modal ────────────────────────────────────────────────────────────
+function CategoryModal({ onClose, onSaved }) {
+  const [name, setName] = useState("");
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef(null);
+  const preview = file ? URL.createObjectURL(file) : null;
 
   const handleSubmit = async () => {
-    if (!form.name.trim()) return toast.error("Name is required");
-    if (!form.price) return toast.error("Price is required");
-    if (isNaN(Number(form.price))) return toast.error("Price must be a number");
-
-    const payload = {
-      ...form,
-      price: Number(form.price),
-      originalPrice: form.originalPrice
-        ? Number(form.originalPrice)
-        : undefined,
-      rating: Number(form.rating) || 4.0,
-    };
-
+    if (!name.trim()) return toast.error("Category name is required");
     try {
       setLoading(true);
-      if (isEdit) {
-        const { data } = await updateMenuItem(item._id, payload);
-        toast.success("Item updated!");
-        onSaved(data, "edit");
-      } else {
-        const { data } = await createMenuItem(payload);
-        toast.success("Item created!");
-        onSaved(data, "create");
-      }
+      const fd = new FormData();
+      fd.append("name", name.trim());
+      if (file) fd.append("image", file);
+      const { data } = await createCategory(fd);
+      toast.success(`"${name}" category created!`);
+      onSaved(data?.data || data);
       onClose();
     } catch (e) {
-      toast.error(e.response?.data?.message || "Failed to save item");
+      toast.error(e?.response?.data?.message || "Failed to create category");
     } finally {
       setLoading(false);
     }
   };
 
-  // field style
   const inp = {
     width: "100%",
-    padding: "9px 12px",
-    border: "1px solid #ddd",
-    borderRadius: 8,
-    fontSize: 13,
+    padding: "10px 13px",
+    border: "1.5px solid #e8e8e8",
+    borderRadius: 10,
+    fontSize: 14,
     outline: "none",
-    boxSizing: "border-box",
-  };
-  const sel = { ...inp, background: WHITE, cursor: "pointer" };
-  const lbl = {
-    fontSize: 12,
-    color: "#666",
-    display: "block",
-    marginBottom: 5,
-    fontWeight: 600,
+    fontFamily: "inherit",
+    transition: "border .15s",
   };
 
   return (
@@ -120,8 +195,8 @@ function ItemModal({ item, onClose, onSaved }) {
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 999,
+        background: "rgba(0,0,0,.55)",
+        zIndex: 1100,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -131,13 +206,12 @@ function ItemModal({ item, onClose, onSaved }) {
       <div
         style={{
           background: WHITE,
-          borderRadius: 16,
-          padding: 28,
+          borderRadius: 20,
           width: "100%",
-          maxWidth: 520,
-          maxHeight: "90vh",
-          overflowY: "auto",
-          position: "relative",
+          maxWidth: 400,
+          padding: 28,
+          boxShadow: "0 24px 64px rgba(0,0,0,.18)",
+          animation: "slideUp .2s cubic-bezier(.4,0,.2,1) both",
         }}
       >
         {/* Header */}
@@ -149,190 +223,178 @@ function ItemModal({ item, onClose, onSaved }) {
             marginBottom: 22,
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 17 }}>
-            {isEdit ? "Edit Menu Item" : "Add New Item"}
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 600, color: "#111" }}>
+              Create category
+            </div>
+            <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>
+              Add a new menu category
+            </div>
           </div>
           <button
             onClick={onClose}
             style={{
-              background: "#f0f0f0",
-              border: "none",
-              borderRadius: "50%",
               width: 30,
               height: 30,
+              borderRadius: "50%",
+              border: "1.5px solid #eee",
+              background: "#f8f8f8",
               cursor: "pointer",
-              fontSize: 16,
+              fontSize: 14,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              color: "#666",
             }}
           >
             ✕
           </button>
         </div>
 
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
-        >
-          {/* Name */}
-          <div style={{ gridColumn: "1/-1" }}>
-            <label style={lbl}>Item Name *</label>
-            <input
-              value={form.name}
-              onChange={(e) => set("name", e.target.value)}
-              placeholder="e.g. Dunked Zinger Burger"
-              style={inp}
-            />
-          </div>
+        {/* Name */}
+        <div style={{ marginBottom: 16 }}>
+          <label
+            style={{
+              fontSize: 12,
+              color: "#888",
+              fontWeight: 500,
+              display: "block",
+              marginBottom: 6,
+            }}
+          >
+            Category name *
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Biryani, Burgers, Desserts…"
+            style={inp}
+            onFocus={(e) => (e.target.style.borderColor = PINK)}
+            onBlur={(e) => (e.target.style.borderColor = "#e8e8e8")}
+            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+            autoFocus
+          />
+        </div>
 
-          {/* Price */}
-          <div>
-            <label style={lbl}>Price (₹) *</label>
-            <input
-              type="number"
-              value={form.price}
-              onChange={(e) => set("price", e.target.value)}
-              placeholder="290"
-              style={inp}
-            />
+        {/* Image upload */}
+        <div style={{ marginBottom: 22 }}>
+          <label
+            style={{
+              fontSize: 12,
+              color: "#888",
+              fontWeight: 500,
+              display: "block",
+              marginBottom: 6,
+            }}
+          >
+            Category image{" "}
+            <span style={{ color: "#bbb", fontWeight: 400 }}>(optional)</span>
+          </label>
+          <div
+            onClick={() => fileRef.current?.click()}
+            style={{
+              width: "100%",
+              height: 130,
+              borderRadius: 12,
+              border: `2px dashed ${file ? PINK : "#e8e8e8"}`,
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: file ? PINK_BG : "#fafafa",
+              overflow: "hidden",
+              position: "relative",
+              transition: "all .2s",
+            }}
+          >
+            {preview ? (
+              <>
+                <img
+                  src={preview}
+                  alt="preview"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "rgba(0,0,0,.35)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: WHITE,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    opacity: 0,
+                    transition: "opacity .2s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = 1)}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = 0)}
+                >
+                  Click to change
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>🖼️</div>
+                <div style={{ fontSize: 13, color: "#aaa", fontWeight: 500 }}>
+                  Click to upload image
+                </div>
+                <div style={{ fontSize: 11, color: "#ccc", marginTop: 3 }}>
+                  JPG, PNG, WEBP · max 5 MB
+                </div>
+              </>
+            )}
           </div>
-
-          {/* Original Price */}
-          <div>
-            <label style={lbl}>Original Price (₹)</label>
-            <input
-              type="number"
-              value={form.originalPrice}
-              onChange={(e) => set("originalPrice", e.target.value)}
-              placeholder="440 (optional)"
-              style={inp}
-            />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label style={lbl}>Category *</label>
-            <select
-              value={form.category}
-              onChange={(e) => set("category", e.target.value)}
-              style={sel}
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tag */}
-          <div>
-            <label style={lbl}>Tag *</label>
-            <select
-              value={form.tag}
-              onChange={(e) => set("tag", e.target.value)}
-              style={sel}
-            >
-              {TAGS.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Description */}
-          <div style={{ gridColumn: "1/-1" }}>
-            <label style={lbl}>Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Short description of the item…"
-              rows={3}
-              style={{ ...inp, resize: "vertical", fontFamily: "inherit" }}
-            />
-          </div>
-
-          {/* Image emoji */}
-          <div>
-            <label style={lbl}>Item Image (emoji)</label>
-            <input
-              value={form.image}
-              onChange={(e) => set("image", e.target.value)}
-              placeholder="🍔"
-              style={inp}
-            />
-          </div>
-
-          {/* Category Image emoji */}
-          <div>
-            <label style={lbl}>Category Image (emoji)</label>
-            <input
-              value={form.categoryImage}
-              onChange={(e) => set("categoryImage", e.target.value)}
-              placeholder="🍔"
-              style={inp}
-            />
-          </div>
-
-          {/* Rating */}
-          <div>
-            <label style={lbl}>Rating (1–5)</label>
-            <input
-              type="number"
-              min="1"
-              max="5"
-              step="0.1"
-              value={form.rating}
-              onChange={(e) => set("rating", e.target.value)}
-              style={inp}
-            />
-          </div>
-
-          {/* Available toggle */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <label style={{ ...lbl, marginBottom: 0 }}>Available</label>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={(e) => setFile(e.target.files[0] || null)}
+          />
+          {file && (
             <div
-              onClick={() => set("isAvailable", !form.isAvailable)}
               style={{
-                width: 44,
-                height: 24,
-                borderRadius: 12,
-                cursor: "pointer",
-                position: "relative",
-                background: form.isAvailable ? "#1D9E75" : "#ddd",
-                transition: "background .2s",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: 6,
               }}
             >
-              <div
+              <span style={{ fontSize: 11, color: "#aaa" }}>{file.name}</span>
+              <button
+                onClick={() => setFile(null)}
                 style={{
-                  position: "absolute",
-                  top: 3,
-                  left: form.isAvailable ? 22 : 3,
-                  width: 18,
-                  height: 18,
-                  borderRadius: "50%",
-                  background: WHITE,
-                  transition: "left .2s",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  fontSize: 11,
+                  color: "#A32D2D",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
                 }}
-              />
+              >
+                Remove
+              </button>
             </div>
-            <span style={{ fontSize: 12, color: "#888" }}>
-              {form.isAvailable ? "Yes" : "No"}
-            </span>
-          </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={onClose}
             style={{
               flex: 1,
               padding: "11px",
-              border: "1px solid #ddd",
-              borderRadius: 25,
+              border: "1.5px solid #eee",
+              borderRadius: 12,
               background: WHITE,
               cursor: "pointer",
               fontSize: 14,
-              fontWeight: 600,
+              fontWeight: 500,
+              color: "#555",
             }}
           >
             Cancel
@@ -344,15 +406,16 @@ function ItemModal({ item, onClose, onSaved }) {
               flex: 2,
               padding: "11px",
               border: "none",
-              borderRadius: 25,
+              borderRadius: 12,
               background: loading ? "#ccc" : PINK,
               color: WHITE,
               cursor: loading ? "not-allowed" : "pointer",
               fontSize: 14,
-              fontWeight: 700,
+              fontWeight: 600,
+              boxShadow: loading ? "none" : "0 4px 14px rgba(233,30,140,.28)",
             }}
           >
-            {loading ? "Saving…" : isEdit ? "Update Item" : "Create Item"}
+            {loading ? "Creating…" : "Create category"}
           </button>
         </div>
       </div>
@@ -360,20 +423,437 @@ function ItemModal({ item, onClose, onSaved }) {
   );
 }
 
-// ── main page ──────────────────────────────────────────────────────────────
+// ── Category Select with inline "+ New category" button ──────────────────────
+function CategorySelect({ value, categories, onChange, onOpenCreateModal }) {
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 5,
+        }}
+      >
+        <label style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>
+          Category *
+        </label>
+        <button
+          onClick={onOpenCreateModal}
+          style={{
+            fontSize: 11,
+            color: PINK,
+            background: PINK_BG,
+            border: `1px solid #f4c0d1`,
+            borderRadius: 20,
+            padding: "2px 10px",
+            cursor: "pointer",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          + New category
+        </button>
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "9px 12px",
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          fontSize: 13,
+          outline: "none",
+          background: WHITE,
+          cursor: "pointer",
+          boxSizing: "border-box",
+        }}
+      >
+        {categories.length === 0 ? (
+          <option value="">No categories — create one first</option>
+        ) : (
+          categories.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))
+        )}
+      </select>
+    </div>
+  );
+}
+
+// ── Item Modal ────────────────────────────────────────────────────────────────
+function ItemModal({ item, categories, onClose, onSaved, onCategoryCreated }) {
+  const isEdit = !!item?._id;
+  const [form, setForm] = useState(
+    isEdit
+      ? { ...item, price: item.price, originalPrice: item.originalPrice || "" }
+      : { ...EMPTY_FORM, category: categories[0] || "" },
+  );
+  const [imgFile, setImgFile] = useState(null);
+  const [catFile, setCatFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [showCatModal, setShowCatModal] = useState(false);
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // When a new category is created inside the nested modal
+  const handleCategoryCreated = (newCat) => {
+    const name = typeof newCat === "string" ? newCat : newCat?.name;
+    if (!name) return;
+    onCategoryCreated(newCat); // bubble up to page
+    set("category", name); // auto-select the new category
+    setShowCatModal(false);
+  };
+
+  const handleSubmit = async () => {
+    if (!form.name.trim()) return toast.error("Name is required");
+    if (!form.price) return toast.error("Price is required");
+    if (isNaN(Number(form.price))) return toast.error("Price must be a number");
+    if (!form.category) return toast.error("Category is required");
+
+    try {
+      setLoading(true);
+      const fd = new FormData();
+      fd.append("name", form.name.trim());
+      fd.append("price", form.price);
+      fd.append("category", form.category);
+      fd.append("tag", form.tag);
+      fd.append("isAvailable", form.isAvailable);
+      fd.append("rating", form.rating || 4);
+      if (form.originalPrice) fd.append("originalPrice", form.originalPrice);
+      if (form.description) fd.append("description", form.description);
+      if (imgFile) fd.append("image", imgFile);
+      else if (form.image) fd.append("image", form.image);
+      if (catFile) fd.append("categoryImage", catFile);
+      else if (form.categoryImage)
+        fd.append("categoryImage", form.categoryImage);
+
+      let data;
+      if (isEdit) {
+        ({ data } = await updateMenuItem(item._id, fd));
+        toast.success("Item updated!");
+        onSaved(data, "edit");
+      } else {
+        ({ data } = await createMenuItem(fd));
+        toast.success("Item created!");
+        onSaved(data, "create");
+      }
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Failed to save item");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inp = {
+    width: "100%",
+    padding: "9px 12px",
+    border: "1px solid #ddd",
+    borderRadius: 8,
+    fontSize: 13,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+  const lbl = {
+    fontSize: 12,
+    color: "#666",
+    display: "block",
+    marginBottom: 5,
+    fontWeight: 600,
+  };
+
+  return (
+    <>
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,.45)",
+          zIndex: 999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+        }}
+      >
+        <div
+          style={{
+            background: WHITE,
+            borderRadius: 16,
+            padding: 28,
+            width: "100%",
+            maxWidth: 560,
+            maxHeight: "92vh",
+            overflowY: "auto",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 22,
+            }}
+          >
+            <div style={{ fontWeight: 600, fontSize: 17 }}>
+              {isEdit ? "Edit menu item" : "Add new item"}
+            </div>
+            <button
+              onClick={onClose}
+              style={{
+                background: "#f0f0f0",
+                border: "none",
+                borderRadius: "50%",
+                width: 30,
+                height: 30,
+                cursor: "pointer",
+                fontSize: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <div
+            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
+          >
+            <div style={{ gridColumn: "1/-1" }}>
+              <label style={lbl}>Item name *</label>
+              <input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                placeholder="e.g. Dunked Zinger Burger"
+                style={inp}
+              />
+            </div>
+
+            <div>
+              <label style={lbl}>Price (₹) *</label>
+              <input
+                type="number"
+                value={form.price}
+                onChange={(e) => set("price", e.target.value)}
+                placeholder="290"
+                style={inp}
+              />
+            </div>
+
+            <div>
+              <label style={lbl}>Original price (₹)</label>
+              <input
+                type="number"
+                value={form.originalPrice}
+                onChange={(e) => set("originalPrice", e.target.value)}
+                placeholder="440 (optional)"
+                style={inp}
+              />
+            </div>
+
+            {/* ── Category select with "+ New category" button ── */}
+            <div style={{ gridColumn: "1/-1" }}>
+              <CategorySelect
+                value={form.category}
+                categories={categories}
+                onChange={(v) => set("category", v)}
+                onOpenCreateModal={() => setShowCatModal(true)}
+              />
+            </div>
+
+            <div style={{ gridColumn: "1/-1" }}>
+              <label style={lbl}>Tag *</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {TAGS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => set("tag", t)}
+                    style={{
+                      flex: 1,
+                      padding: "9px",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      border:
+                        form.tag === t ? `2px solid ${PINK}` : "1px solid #ddd",
+                      background: form.tag === t ? PINK_BG : WHITE,
+                      color: form.tag === t ? PINK : "#555",
+                      fontWeight: form.tag === t ? 600 : 400,
+                    }}
+                  >
+                    {t === "Veg" ? "🟢" : "🔴"} {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ gridColumn: "1/-1" }}>
+              <label style={lbl}>Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                placeholder="Short description of the item…"
+                rows={2}
+                style={{ ...inp, resize: "vertical", fontFamily: "inherit" }}
+              />
+            </div>
+
+            <ImageUploadBox
+              label="Item image *"
+              currentUrl={form.image}
+              file={imgFile}
+              onFileChange={setImgFile}
+            />
+
+            <ImageUploadBox
+              label="Category image"
+              currentUrl={form.categoryImage}
+              file={catFile}
+              onFileChange={setCatFile}
+            />
+
+            <div>
+              <label style={lbl}>Rating (1–5)</label>
+              <input
+                type="number"
+                min="1"
+                max="5"
+                step="0.1"
+                value={form.rating}
+                onChange={(e) => set("rating", e.target.value)}
+                style={inp}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <label style={{ ...lbl, marginBottom: 0 }}>Available</label>
+              <div
+                onClick={() => set("isAvailable", !form.isAvailable)}
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  position: "relative",
+                  background: form.isAvailable ? GREEN : "#ddd",
+                  transition: "background .2s",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 3,
+                    left: form.isAvailable ? 22 : 3,
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    background: WHITE,
+                    transition: "left .2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 12, color: "#888" }}>
+                {form.isAvailable ? "Yes" : "No"}
+              </span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 14,
+              padding: "10px 14px",
+              background: "#f8f8f8",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "#888",
+            }}
+          >
+            📷 Images uploaded to Cloudinary automatically. Max 5 MB. Square
+            images recommended.
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1,
+                padding: "11px",
+                border: "1px solid #ddd",
+                borderRadius: 25,
+                background: WHITE,
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              style={{
+                flex: 2,
+                padding: "11px",
+                border: "none",
+                borderRadius: 25,
+                background: loading ? "#ccc" : PINK,
+                color: WHITE,
+                cursor: loading ? "not-allowed" : "pointer",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              {loading
+                ? `⏳ ${isEdit ? "Updating…" : "Creating…"}`
+                : isEdit
+                  ? "Update item"
+                  : "Create item"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Nested category modal — z-index higher than item modal */}
+      {showCatModal && (
+        <div style={{ zIndex: 1100, position: "fixed", inset: 0 }}>
+          <CategoryModal
+            onClose={() => setShowCatModal(false)}
+            onSaved={handleCategoryCreated}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
 export default function MenuAdminPage() {
   const [items, setItems] = useState([]);
-  const [cats, setCats] = useState(["All"]);
+  const [cats, setCats] = useState([]); // string[]
   const [search, setSearch] = useState("");
   const [selCat, setSelCat] = useState("All");
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | "create" | item-object
+  const [modal, setModal] = useState(null);
+
+  // Also allow creating category directly from the filter bar
+  const [showCatModal, setShowCatModal] = useState(false);
+
+  const loadCats = () =>
+    getCategories().then((r) => setCats(normalizeCats(r.data)));
 
   useEffect(() => {
     Promise.all([getMenu({}), getCategories()])
       .then(([m, c]) => {
         setItems(m.data || []);
-        setCats(["All", ...(c.data || [])]);
+        setCats(normalizeCats(c.data));
         setLoading(false);
       })
       .catch(() => {
@@ -385,6 +865,15 @@ export default function MenuAdminPage() {
   const handleSaved = (saved, mode) => {
     if (mode === "create") setItems((p) => [saved, ...p]);
     else setItems((p) => p.map((i) => (i._id === saved._id ? saved : i)));
+    loadCats();
+  };
+
+  // Called when a new category is created from inside ItemModal OR the filter bar
+  const handleCategoryCreated = (newCat) => {
+    const name = typeof newCat === "string" ? newCat : newCat?.name;
+    if (name && !cats.includes(name)) {
+      setCats((p) => [...p, name]);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -418,9 +907,11 @@ export default function MenuAdminPage() {
       i.name?.toLowerCase().includes(search.toLowerCase()),
   );
 
+  const allCats = ["All", ...cats];
+
   return (
     <>
-      {/* Page header */}
+      {/* ── Header ── */}
       <div style={{ marginBottom: 20 }}>
         <div
           style={{
@@ -430,7 +921,7 @@ export default function MenuAdminPage() {
           }}
         >
           <div>
-            <div style={{ fontSize: 20, fontWeight: 500 }}>Menu Items</div>
+            <div style={{ fontSize: 20, fontWeight: 500 }}>Menu items</div>
             <div style={{ fontSize: 13, color: "#888", marginTop: 2 }}>
               Manage the café's food & beverage catalog
             </div>
@@ -448,12 +939,11 @@ export default function MenuAdminPage() {
               cursor: "pointer",
             }}
           >
-            + Add Item
+            + Add item
           </button>
         </div>
       </div>
 
-      {/* Card */}
       <div
         style={{
           background: WHITE,
@@ -462,13 +952,14 @@ export default function MenuAdminPage() {
           padding: 18,
         }}
       >
-        {/* Filters */}
+        {/* ── Filters ── */}
         <div
           style={{
             display: "flex",
             gap: 10,
             marginBottom: 18,
             flexWrap: "wrap",
+            alignItems: "center",
           }}
         >
           <input
@@ -485,6 +976,8 @@ export default function MenuAdminPage() {
               outline: "none",
             }}
           />
+
+          {/* Category filter dropdown */}
           <select
             value={selCat}
             onChange={(e) => setSelCat(e.target.value)}
@@ -498,13 +991,36 @@ export default function MenuAdminPage() {
               minWidth: 160,
             }}
           >
-            {cats.map((c) => (
-              <option key={c}>{c}</option>
+            {allCats.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
+
+          {/* ── Create category button in filter bar ── */}
+          <button
+            onClick={() => setShowCatModal(true)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "9px 16px",
+              borderRadius: 8,
+              border: `1.5px solid #f4c0d1`,
+              background: PINK_BG,
+              color: PINK,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + New category
+          </button>
         </div>
 
-        {/* Summary counts */}
+        {/* ── Stats ── */}
         <div
           style={{
             display: "flex",
@@ -515,7 +1031,7 @@ export default function MenuAdminPage() {
         >
           {[
             {
-              label: "Total Items",
+              label: "Total items",
               val: items.length,
               color: "#185FA5",
               bg: "#E6F1FB",
@@ -533,13 +1049,13 @@ export default function MenuAdminPage() {
               bg: "#FCEBEB",
             },
             {
-              label: "Veg Items",
+              label: "Veg items",
               val: items.filter((i) => i.tag === "Veg").length,
               color: "#3B6D11",
               bg: "#EAF3DE",
             },
             {
-              label: "Non Veg Items",
+              label: "Non-veg items",
               val: items.filter((i) => i.tag === "Non Veg").length,
               color: "#854F0B",
               bg: "#FAEEDA",
@@ -564,7 +1080,7 @@ export default function MenuAdminPage() {
           ))}
         </div>
 
-        {/* Table */}
+        {/* ── Table ── */}
         {loading ? (
           <div
             style={{ textAlign: "center", padding: "48px 0", color: "#aaa" }}
@@ -621,7 +1137,6 @@ export default function MenuAdminPage() {
                     key={item._id}
                     style={{ borderBottom: "0.5px solid #f5f5f5" }}
                   >
-                    {/* Name + emoji */}
                     <td style={{ padding: "12px" }}>
                       <div
                         style={{
@@ -630,16 +1145,39 @@ export default function MenuAdminPage() {
                           gap: 10,
                         }}
                       >
-                        <img
-                          src={item.image || "https://via.placeholder.com/60"}
-                          alt={item.name}
-                          style={{
-                            width: 60,
-                            height: 60,
-                            borderRadius: 10,
-                            objectFit: "cover",
-                          }}
-                        />
+                        {item.image?.startsWith("http") ? (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            style={{
+                              width: 56,
+                              height: 56,
+                              borderRadius: 10,
+                              objectFit: "cover",
+                              background: "#f5f5f5",
+                              flexShrink: 0,
+                            }}
+                            onError={(e) => {
+                              e.target.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: 56,
+                              height: 56,
+                              borderRadius: 10,
+                              background: "#f5f5f5",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 28,
+                              flexShrink: 0,
+                            }}
+                          >
+                            🍽️
+                          </div>
+                        )}
                         <div>
                           <div style={{ fontWeight: 500 }}>{item.name}</div>
                           <div
@@ -655,8 +1193,6 @@ export default function MenuAdminPage() {
                         </div>
                       </div>
                     </td>
-
-                    {/* Category */}
                     <td style={{ padding: "12px" }}>
                       <span
                         style={{
@@ -669,8 +1205,6 @@ export default function MenuAdminPage() {
                         {item.category}
                       </span>
                     </td>
-
-                    {/* Price */}
                     <td style={{ padding: "12px" }}>
                       <div style={{ fontWeight: 600 }}>₹{item.price}</div>
                       {item.originalPrice && (
@@ -685,16 +1219,12 @@ export default function MenuAdminPage() {
                         </div>
                       )}
                     </td>
-
-                    {/* Tag */}
                     <td style={{ padding: "12px" }}>
                       <Badge
                         label={item.tag || "—"}
                         type={item.tag === "Veg" ? "Ready" : "Preparing"}
                       />
                     </td>
-
-                    {/* Rating */}
                     <td
                       style={{
                         padding: "12px",
@@ -704,8 +1234,6 @@ export default function MenuAdminPage() {
                     >
                       ★ {item.rating?.toFixed(1)}
                     </td>
-
-                    {/* Available toggle */}
                     <td style={{ padding: "12px" }}>
                       <div
                         onClick={() => toggleAvail(item)}
@@ -716,7 +1244,7 @@ export default function MenuAdminPage() {
                           borderRadius: 11,
                           cursor: "pointer",
                           position: "relative",
-                          background: item.isAvailable ? "#1D9E75" : "#ddd",
+                          background: item.isAvailable ? GREEN : "#ddd",
                           transition: "background .2s",
                         }}
                       >
@@ -730,13 +1258,11 @@ export default function MenuAdminPage() {
                             borderRadius: "50%",
                             background: WHITE,
                             transition: "left .2s",
-                            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                            boxShadow: "0 1px 3px rgba(0,0,0,.2)",
                           }}
                         />
                       </div>
                     </td>
-
-                    {/* Actions */}
                     <td style={{ padding: "12px" }}>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
@@ -778,12 +1304,25 @@ export default function MenuAdminPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* ── Item Modal ── */}
       {modal && (
         <ItemModal
           item={modal === "create" ? null : modal}
+          categories={cats}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
+          onCategoryCreated={handleCategoryCreated}
+        />
+      )}
+
+      {/* ── Standalone Category Modal (from filter bar) ── */}
+      {showCatModal && (
+        <CategoryModal
+          onClose={() => setShowCatModal(false)}
+          onSaved={(newCat) => {
+            handleCategoryCreated(newCat);
+            setShowCatModal(false);
+          }}
         />
       )}
     </>
