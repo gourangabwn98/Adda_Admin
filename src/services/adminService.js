@@ -12,14 +12,23 @@ export const updateInvoiceStatus = (id, status) =>
   api.patch(`/admin/invoices/${id}/status`, { status });
 
 // ── NEW TABLE MANAGEMENT APIs ─────────────────────────────────────
-export const getAllTables = () => api.get("admin/tables");
+// export const getAllTables = () => api.get("admin/tables");
 
-export const createTable = (data) => api.post("admin/tables", data);
+// export const createTable = (data) => api.post("admin/tables", data);
 
-export const updateTable = (tableNo, data) =>
-  api.put(`admin/tables/${tableNo}`, data);
+// export const updateTable = (tableNo, data) =>
+//   api.put(`admin/tables/${tableNo}`, data);
 
-export const deleteTable = (tableNo) => api.delete(`admin/tables/${tableNo}`);
+// export const deleteTable = (tableNo) => api.delete(`admin/tables/${tableNo}`);
+// ── tables ────────────────────────────────────────────────────────────────────
+export const getAllTables = () => api.get("/admin/tables");
+export const getTableByNo = (tableNo) => api.get(`/admin/tables/${tableNo}`);
+export const createTable = (data) => api.post("/admin/tables", data);
+export const updateTable = (tableNo, d) =>
+  api.put(`/admin/tables/${tableNo}`, d);
+export const deleteTable = (tableNo) => api.delete(`/admin/tables/${tableNo}`);
+export const regenerateQR = (tableNo) =>
+  api.post(`/admin/tables/${tableNo}/regenerate-qr`);
 
 //for chef
 

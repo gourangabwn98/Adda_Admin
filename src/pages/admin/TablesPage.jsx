@@ -9,6 +9,7 @@ import {
   createTable,
   updateTable,
   deleteTable,
+  regenerateQR,
 } from "../../services/adminService.js";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
@@ -61,79 +62,327 @@ const ALL_STATUSES = [
   "Cancelled",
 ];
 
-// ── Global Styles Injected Once ───────────────────────────────────────────────
+// ── Global Styles ─────────────────────────────────────────────────────────────
 if (!document.getElementById("tables-page-styles")) {
   const s = document.createElement("style");
   s.id = "tables-page-styles";
   s.textContent = `
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
-
     @keyframes blinkBorder {
-      0%,100% { box-shadow: 0 0 0 0 rgba(211,47,47,0); border-color: #d32f2f; }
-      50%      { box-shadow: 0 0 0 5px rgba(211,47,47,0.25); border-color: #ff1744; }
+      0%,100%{ box-shadow:0 0 0 0 rgba(211,47,47,0); border-color:#d32f2f; }
+      50%     { box-shadow:0 0 0 5px rgba(211,47,47,.25); border-color:#ff1744; }
     }
     @keyframes slideUp {
-      from { opacity: 0; transform: translateY(18px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from{ opacity:0; transform:translateY(18px); }
+      to  { opacity:1; transform:translateY(0); }
     }
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
     @keyframes pulseGreen {
-      0%,100% { box-shadow: 0 0 0 0 rgba(29,158,117,0); }
-      50%      { box-shadow: 0 0 0 5px rgba(29,158,117,0.22); }
+      0%,100%{ box-shadow:0 0 0 0 rgba(29,158,117,0); }
+      50%    { box-shadow:0 0 0 5px rgba(29,158,117,.22); }
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .tables-root * { box-sizing: border-box; font-family: 'DM Sans', sans-serif; }
-    .blink-pending  { animation: blinkBorder 1.4s ease-in-out infinite; }
-    .pulse-live     { animation: pulseGreen 2s ease-in-out infinite; }
-    .drawer-enter   { animation: slideUp .22s cubic-bezier(.4,0,.2,1) both; }
-    .table-card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
-    .btn-ghost {
-      background: none; border: 1px solid ${BORDER};
-      border-radius: 8px; padding: 6px 14px;
-      font-size: 12px; font-family: 'DM Sans',sans-serif;
-      cursor: pointer; color: #555; transition: all .15s;
-    }
-    .btn-ghost:hover { background: #f5f5f5; border-color: #ccc; }
-    .status-btn {
-      padding: 5px 13px; border-radius: 20px; font-size: 11.5px;
-      font-family: 'DM Sans',sans-serif; font-weight: 500;
-      cursor: pointer; transition: all .15s; border: 1.5px solid transparent;
-    }
-    .status-btn:hover { filter: brightness(.93); transform: scale(1.03); }
-    .status-btn:disabled { opacity: .45; cursor: not-allowed; }
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.45);
-      z-index: 1000; display: flex; align-items: center; justify-content: center;
-      animation: fadeIn .18s ease both; backdrop-filter: blur(2px);
-    }
-    .modal-box {
-      background: ${WHITE}; border-radius: 20px; width: 420px;
-      padding: 28px; box-shadow: 0 24px 64px rgba(0,0,0,.18);
-      animation: slideUp .22s cubic-bezier(.4,0,.2,1) both;
-    }
-    .input-field {
-      width: 100%; padding: 11px 14px; border-radius: 10px;
-      border: 1.5px solid #e0e0e0; font-size: 14px;
-      font-family: 'DM Sans',sans-serif; outline: none; transition: border .15s;
-    }
-    .input-field:focus { border-color: ${PINK}; }
-    .tag {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500;
-    }
-    .spinner {
-      width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.3);
-      border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
-      display: inline-block;
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .tables-root *{ box-sizing:border-box; font-family:'DM Sans',sans-serif; }
+    .blink-pending { animation:blinkBorder 1.4s ease-in-out infinite; }
+    .pulse-live    { animation:pulseGreen 2s ease-in-out infinite; }
+    .drawer-enter  { animation:slideUp .22s cubic-bezier(.4,0,.2,1) both; }
+    .table-card-hover:hover{ transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.1); }
+    .btn-ghost{ background:none; border:1px solid rgba(0,0,0,.07); border-radius:8px;
+      padding:6px 14px; font-size:12px; cursor:pointer; color:#555; transition:all .15s; }
+    .btn-ghost:hover{ background:#f5f5f5; border-color:#ccc; }
+    .status-btn{ padding:5px 13px; border-radius:20px; font-size:11.5px; font-weight:500;
+      cursor:pointer; transition:all .15s; border:1.5px solid transparent; }
+    .status-btn:hover{ filter:brightness(.93); transform:scale(1.03); }
+    .status-btn:disabled{ opacity:.45; cursor:not-allowed; }
+    .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000;
+      display:flex; align-items:center; justify-content:center;
+      animation:fadeIn .18s ease both; backdrop-filter:blur(2px); }
+    .modal-box{ background:#fff; border-radius:20px; padding:28px;
+      box-shadow:0 24px 64px rgba(0,0,0,.18); animation:slideUp .22s cubic-bezier(.4,0,.2,1) both; }
+    .input-field{ width:100%; padding:11px 14px; border-radius:10px; border:1.5px solid #e0e0e0;
+      font-size:14px; outline:none; transition:border .15s; }
+    .input-field:focus{ border-color:${PINK}; }
+    .tag{ display:inline-flex; align-items:center; gap:4px; padding:3px 10px;
+      border-radius:20px; font-size:11px; font-weight:500; }
+    .spinner{ width:18px; height:18px; border:2.5px solid rgba(255,255,255,.3);
+      border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; display:inline-block; }
+    .qr-btn{ display:flex; align-items:center; justify-content:center; gap:6px;
+      padding:9px 16px; border-radius:10px; font-size:12px; font-weight:500;
+      cursor:pointer; transition:all .15s; border:1.5px solid; }
+    .qr-btn:hover{ filter:brightness(.94); transform:translateY(-1px); }
+    @media print {
+      body > *:not(#qr-print-area){ display:none !important; }
+      #qr-print-area{ display:block !important; }
     }
   `;
   document.head.appendChild(s);
+}
+
+// ── QR Modal ──────────────────────────────────────────────────────────────────
+function QRModal({ table, onClose, onRegenerate }) {
+  const [regen, setRegen] = useState(false);
+  const [qrData, setQrData] = useState({
+    code: table.qrCode,
+    url: table.qrUrl,
+  });
+
+  const handleRegenerate = async () => {
+    try {
+      setRegen(true);
+      const { data } = await onRegenerate(table.tableNo);
+      setQrData({ code: data.qrCode, url: data.qrUrl });
+      toast.success("QR regenerated!");
+    } catch {
+      toast.error("Regenerate failed");
+    } finally {
+      setRegen(false);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!qrData.code) return;
+    const a = document.createElement("a");
+    a.href = qrData.code;
+    a.download = `adda-table-${table.tableNo}-qr.png`;
+    a.click();
+  };
+
+  const handlePrint = () => {
+    // inject print-only div
+    let el = document.getElementById("qr-print-area");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "qr-print-area";
+      document.body.appendChild(el);
+    }
+    el.style.display = "none";
+    el.innerHTML = `
+      <div style="text-align:center;padding:40px;font-family:sans-serif">
+        <div style="font-size:28px;font-weight:800;color:#e91e8c;margin-bottom:4px">আড্ডা</div>
+        <div style="font-size:13px;letter-spacing:3px;color:#888;margin-bottom:20px">ADDA CAFE</div>
+        <div style="font-size:22px;font-weight:700;margin-bottom:4px">Table ${table.tableNo}</div>
+        <div style="font-size:13px;color:#888;margin-bottom:24px">${table.seats} seats · Scan to order</div>
+        <img src="${qrData.code}" style="width:220px;height:220px;border:2px solid #e91e8c;border-radius:12px;padding:8px"/>
+        <div style="margin-top:20px;font-size:11px;color:#aaa;word-break:break-all;max-width:300px;margin-left:auto;margin-right:auto">${qrData.url}</div>
+        <div style="margin-top:24px;font-size:11px;color:#ccc">Scan QR code to place your order instantly</div>
+      </div>
+    `;
+    window.print();
+  };
+
+  const handleCopyUrl = () => {
+    if (!qrData.url) return;
+    navigator.clipboard.writeText(qrData.url);
+    toast.success("Link copied!");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-box"
+        style={{ width: 420 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            marginBottom: 20,
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 17 }}>
+              QR Code — Table {table.tableNo}
+            </div>
+            <div style={{ fontSize: 12, color: "#aaa", marginTop: 3 }}>
+              {table.seats} seats · {table.status || "Active"}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: "50%",
+              border: "1.5px solid #eee",
+              background: SURFACE,
+              cursor: "pointer",
+              fontSize: 14,
+              color: "#888",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* QR image */}
+        <div style={{ textAlign: "center", marginBottom: 18 }}>
+          {qrData.code ? (
+            <div
+              style={{
+                display: "inline-block",
+                padding: 14,
+                borderRadius: 16,
+                border: `2px solid ${PINK}22`,
+                background: "#fafafa",
+              }}
+            >
+              <img
+                src={qrData.code}
+                alt={`QR Table ${table.tableNo}`}
+                style={{
+                  width: 200,
+                  height: 200,
+                  display: "block",
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                width: 200,
+                height: 200,
+                margin: "0 auto",
+                borderRadius: 16,
+                background: "#f5f5f5",
+                border: "2px dashed #ddd",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ccc",
+              }}
+            >
+              <div style={{ fontSize: 36, marginBottom: 8 }}>⬛</div>
+              <div style={{ fontSize: 12 }}>No QR yet</div>
+            </div>
+          )}
+
+          {/* table label under QR */}
+          <div style={{ marginTop: 12, fontSize: 16, fontWeight: 600 }}>
+            Table {table.tableNo}
+          </div>
+          <div style={{ fontSize: 12, color: "#aaa", marginTop: 2 }}>
+            Scan to order instantly
+          </div>
+        </div>
+
+        {/* URL strip */}
+        {qrData.url && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 18,
+              padding: "10px 12px",
+              background: "#f8f8f8",
+              borderRadius: 10,
+              border: "1px solid #eee",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                fontSize: 11,
+                color: "#888",
+                wordBreak: "break-all",
+                fontFamily: "monospace",
+                lineHeight: 1.4,
+              }}
+            >
+              {qrData.url}
+            </div>
+            <button
+              onClick={handleCopyUrl}
+              className="btn-ghost"
+              style={{ flexShrink: 0, fontSize: 11, padding: "5px 10px" }}
+            >
+              Copy
+            </button>
+          </div>
+        )}
+
+        {/* action buttons */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 8,
+            marginBottom: 10,
+          }}
+        >
+          <button
+            onClick={handleDownload}
+            disabled={!qrData.code}
+            className="qr-btn"
+            style={{
+              background: PINK_LIGHT,
+              color: PINK_DARK,
+              borderColor: `${PINK}44`,
+              opacity: !qrData.code ? 0.5 : 1,
+            }}
+          >
+            ↓ Download PNG
+          </button>
+          <button
+            onClick={handlePrint}
+            disabled={!qrData.code}
+            className="qr-btn"
+            style={{
+              background: "#f0f4ff",
+              color: "#1a56db",
+              borderColor: "#c7d7f8",
+              opacity: !qrData.code ? 0.5 : 1,
+            }}
+          >
+            🖨 Print QR
+          </button>
+        </div>
+
+        <button
+          onClick={handleRegenerate}
+          disabled={regen}
+          className="qr-btn"
+          style={{
+            width: "100%",
+            background: "#f8f8f8",
+            color: "#555",
+            borderColor: "#ddd",
+            opacity: regen ? 0.6 : 1,
+          }}
+        >
+          {regen ? (
+            <>
+              <span
+                className="spinner"
+                style={{ borderTopColor: "#555", borderColor: "#ccc" }}
+              />{" "}
+              Regenerating…
+            </>
+          ) : (
+            "↻ Regenerate QR"
+          )}
+        </button>
+
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 11,
+            color: "#bbb",
+            textAlign: "center",
+          }}
+        >
+          Regenerating changes the QR image but keeps the same URL
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── Chair ─────────────────────────────────────────────────────────────────────
@@ -170,6 +419,7 @@ const TableCard = ({
   tableStatus,
   onToggleStatus,
   onDelete,
+  onQR,
 }) => {
   const status = order ? order.status : "Empty";
   const s = STATUS_STYLE[status] || STATUS_STYLE.Empty;
@@ -190,7 +440,7 @@ const TableCard = ({
         position: "relative",
       }}
     >
-      {/* Active / Inactive pill */}
+      {/* active pill */}
       <div
         style={{
           fontSize: 9,
@@ -208,17 +458,16 @@ const TableCard = ({
         {isActive ? "Active" : "Inactive"}
       </div>
 
-      {/* Chairs top */}
+      {/* top chairs */}
       <div style={{ display: "flex", gap: 8 }}>
         <Chair pos="top" occupied={occ} />
         {is4 && <Chair pos="top" occupied={occ} />}
       </div>
 
-      {/* Middle row */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {is4 && <Chair pos="left" occupied={occ} />}
 
-        {/* Table body */}
+        {/* table body */}
         <div
           onClick={onClick}
           className={`table-card-hover ${isPending ? "blink-pending" : ""}`}
@@ -277,24 +526,43 @@ const TableCard = ({
               ₹{Math.round(order.total).toLocaleString()}
             </div>
           )}
-          {config.seats === 2 && !isPending && status === "Empty" && (
-            <div style={{ fontSize: 8, color: "#ccc", marginTop: 2 }}>
-              2 pax
-            </div>
-          )}
         </div>
 
         {is4 && <Chair pos="right" occupied={occ} />}
       </div>
 
-      {/* Chairs bottom */}
+      {/* bottom chairs */}
       <div style={{ display: "flex", gap: 8 }}>
         <Chair pos="bottom" occupied={occ} />
         {is4 && <Chair pos="bottom" occupied={occ} />}
       </div>
 
-      {/* Action strip */}
-      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      {/* action strip — now includes QR button */}
+      <div
+        style={{
+          display: "flex",
+          gap: 5,
+          marginTop: 6,
+          flexWrap: "wrap",
+          justifyContent: "center",
+        }}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onQR(config.id);
+          }}
+          className="btn-ghost"
+          style={{
+            fontSize: 11,
+            padding: "4px 10px",
+            color: PINK,
+            borderColor: `${PINK}44`,
+            background: PINK_LIGHT,
+          }}
+        >
+          QR
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -308,7 +576,7 @@ const TableCard = ({
             borderColor: isActive ? "#ffcdd2" : "#b2dfdb",
           }}
         >
-          {isActive ? "Deactivate" : "Activate"}
+          {isActive ? "Off" : "On"}
         </button>
         <button
           onClick={(e) => {
@@ -330,7 +598,7 @@ const TableCard = ({
   );
 };
 
-// ── OrderDrawer ───────────────────────────────────────────────────────────────
+// ── OrderDrawer (unchanged) ───────────────────────────────────────────────────
 const OrderDrawer = ({
   config,
   order,
@@ -341,7 +609,6 @@ const OrderDrawer = ({
 }) => {
   const [updating, setUpdating] = useState(false);
   const [invUpdating, setInvUpdating] = useState(false);
-
   const s = order
     ? STATUS_STYLE[order.status] || STATUS_STYLE.Empty
     : STATUS_STYLE.Empty;
@@ -359,13 +626,12 @@ const OrderDrawer = ({
       setUpdating(false);
     }
   };
-
-  const handleInvoiceStatus = async (newStatus) => {
+  const handleInvoiceStatus = async (ns) => {
     if (!invoice?._id) return;
-    if (!window.confirm(`Mark invoice as "${newStatus}"?`)) return;
+    if (!window.confirm(`Mark invoice as "${ns}"?`)) return;
     try {
       setInvUpdating(true);
-      await onInvoiceStatusChange(invoice._id, newStatus);
+      await onInvoiceStatusChange(invoice._id, ns);
     } finally {
       setInvUpdating(false);
     }
@@ -386,7 +652,7 @@ const OrderDrawer = ({
         ...(isPending ? { background: "#fffbfb" } : {}),
       }}
     >
-      {/* Header */}
+      {/* header */}
       <div
         style={{
           display: "flex",
@@ -445,11 +711,6 @@ const OrderDrawer = ({
                   · {order.user.name}
                 </span>
               )}
-              {order.user?.phone && (
-                <span style={{ marginLeft: 6, color: "#aaa" }}>
-                  · {order.user.phone}
-                </span>
-              )}
             </div>
           )}
         </div>
@@ -467,16 +728,12 @@ const OrderDrawer = ({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            transition: "all .15s",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#f0f0f0")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = SURFACE)}
         >
           ✕
         </button>
       </div>
 
-      {/* Empty table */}
       {!order ? (
         <div style={{ textAlign: "center", padding: "40px 0", color: "#ccc" }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>○</div>
@@ -489,7 +746,7 @@ const OrderDrawer = ({
         <div
           style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}
         >
-          {/* LEFT: Items + Totals */}
+          {/* LEFT */}
           <div>
             <div
               style={{
@@ -503,55 +760,45 @@ const OrderDrawer = ({
             >
               Order Items
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {order.items?.map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "9px 0",
-                    borderBottom: "1px solid #f5f5f5",
-                    fontSize: 13,
-                  }}
-                >
+            {order.items?.map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "9px 0",
+                  borderBottom: "1px solid #f5f5f5",
+                  fontSize: 13,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: 8,
-                        background: PINK_LIGHT,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: PINK,
-                        fontFamily: "'DM Mono',monospace",
-                      }}
-                    >
-                      {item.qty}
-                    </div>
-                    <span style={{ color: "#333" }}>{item.name}</span>
-                  </div>
-                  <span
                     style={{
-                      fontWeight: 500,
+                      width: 26,
+                      height: 26,
+                      borderRadius: 8,
+                      background: PINK_LIGHT,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: PINK,
                       fontFamily: "'DM Mono',monospace",
-                      fontSize: 13,
                     }}
                   >
-                    ₹{(item.price * item.qty).toLocaleString()}
-                  </span>
+                    {item.qty}
+                  </div>
+                  <span style={{ color: "#333" }}>{item.name}</span>
                 </div>
-              ))}
-            </div>
-
-            {/* Totals */}
+                <span
+                  style={{ fontWeight: 500, fontFamily: "'DM Mono',monospace" }}
+                >
+                  ₹{(item.price * item.qty).toLocaleString()}
+                </span>
+              </div>
+            ))}
             <div
               style={{
                 marginTop: 14,
@@ -601,9 +848,8 @@ const OrderDrawer = ({
             </div>
           </div>
 
-          {/* RIGHT: Status + Invoice */}
+          {/* RIGHT */}
           <div>
-            {/* Status badges */}
             <div
               style={{
                 fontSize: 10,
@@ -656,8 +902,6 @@ const OrderDrawer = ({
                 {order.paymentStatus}
               </span>
             </div>
-
-            {/* Update order status */}
             <div
               style={{
                 fontSize: 10,
@@ -702,7 +946,6 @@ const OrderDrawer = ({
               })}
             </div>
 
-            {/* Invoice section */}
             {invoice ? (
               <>
                 <div
@@ -783,7 +1026,6 @@ const OrderDrawer = ({
                     </span>
                   </div>
                 </div>
-
                 {isPending && (
                   <div style={{ display: "flex", gap: 8 }}>
                     <button
@@ -799,9 +1041,7 @@ const OrderDrawer = ({
                         fontWeight: 600,
                         cursor: "pointer",
                         fontSize: 13,
-                        fontFamily: "'DM Sans',sans-serif",
                         opacity: invUpdating ? 0.5 : 1,
-                        transition: "opacity .15s",
                       }}
                     >
                       {invUpdating ? (
@@ -823,9 +1063,7 @@ const OrderDrawer = ({
                         fontWeight: 600,
                         cursor: "pointer",
                         fontSize: 13,
-                        fontFamily: "'DM Sans',sans-serif",
                         opacity: invUpdating ? 0.5 : 1,
-                        transition: "opacity .15s",
                       }}
                     >
                       {invUpdating ? <span className="spinner" /> : "✕ Cancel"}
@@ -842,7 +1080,7 @@ const OrderDrawer = ({
                   fontSize: 12,
                   color: "#bbb",
                   textAlign: "center",
-                  border: `1px dashed #e0e0e0`,
+                  border: "1px dashed #e0e0e0",
                 }}
               >
                 No invoice generated yet
@@ -856,7 +1094,7 @@ const OrderDrawer = ({
 };
 
 // ── Stat Card ─────────────────────────────────────────────────────────────────
-const StatCard = ({ label, val, color, sub }) => (
+const StatCard = ({ label, val, color }) => (
   <div
     style={{
       background: WHITE,
@@ -887,9 +1125,6 @@ const StatCard = ({ label, val, color, sub }) => (
     >
       {label}
     </div>
-    {sub && (
-      <div style={{ fontSize: 10, color: "#ccc", marginTop: 2 }}>{sub}</div>
-    )}
   </div>
 );
 
@@ -902,12 +1137,15 @@ export default function TablesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // create modal
   const [showModal, setShowModal] = useState(false);
   const [newTableNo, setNewTableNo] = useState("");
   const [newSeats, setNewSeats] = useState("4");
   const [creating, setCreating] = useState(false);
 
-  // ── fetch ──────────────────────────────────────────────────────────────────
+  // QR modal
+  const [qrTable, setQrTable] = useState(null);
+
   const fetchData = useCallback(async () => {
     try {
       setError(null);
@@ -916,7 +1154,6 @@ export default function TablesPage() {
         getAllInvoices().catch(() => ({ data: { invoices: [] } })),
         getAllTables().catch(() => ({ data: { tables: [] } })),
       ]);
-
       const orders = ordersRes?.data?.orders || [];
       const invoices = invoicesRes?.data?.invoices || [];
       const dbTables = tablesRes?.data?.tables || [];
@@ -929,7 +1166,9 @@ export default function TablesPage() {
             o.tableNo &&
             !["Completed", "Cancelled"].includes(o.status),
         )
-        .forEach((o) => (oMap[Number(o.tableNo)] = o));
+        .forEach((o) => {
+          oMap[Number(o.tableNo)] = o;
+        });
 
       const iMap = {};
       invoices.forEach((inv) => {
@@ -962,7 +1201,6 @@ export default function TablesPage() {
     return () => clearInterval(iv);
   }, [fetchData]);
 
-  // ── handlers ───────────────────────────────────────────────────────────────
   const handleStatusChange = async (orderId, newStatus) => {
     try {
       await updateOrderStatus(orderId, newStatus);
@@ -985,15 +1223,15 @@ export default function TablesPage() {
   };
 
   const handleToggleStatus = async (tableNo) => {
-    const table = tables.find((t) => t.tableNo === tableNo);
-    if (!table) return;
-    const newStatus = table.status === "Active" ? "Inactive" : "Active";
+    const tbl = tables.find((t) => t.tableNo === tableNo);
+    if (!tbl) return;
+    const ns = tbl.status === "Active" ? "Inactive" : "Active";
     try {
-      await updateTable(tableNo, { status: newStatus });
-      toast.success(`Table ${tableNo} → ${newStatus}`);
+      await updateTable(tableNo, { status: ns });
+      toast.success(`Table ${tableNo} → ${ns}`);
       fetchData();
     } catch {
-      toast.error("Failed to update table status");
+      toast.error("Failed to update");
     }
   };
 
@@ -1004,8 +1242,8 @@ export default function TablesPage() {
       toast.success(`Table ${tableNo} deleted`);
       fetchData();
       if (selected === tableNo) setSelected(null);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to delete table");
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Failed to delete");
     }
   };
 
@@ -1017,28 +1255,42 @@ export default function TablesPage() {
         tableNo: parseInt(newTableNo),
         seats: parseInt(newSeats),
       });
-      toast.success(`Table ${newTableNo} created`);
+      toast.success(`Table ${newTableNo} created with QR!`);
       setShowModal(false);
       setNewTableNo("");
-      fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to create table");
+      await fetchData();
+      // auto-open QR for the new table
+      const res = await getAllTables();
+      const created = (res.data?.tables || []).find(
+        (t) => t.tableNo === parseInt(newTableNo),
+      );
+      if (created) setQrTable(created);
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Failed to create");
     } finally {
       setCreating(false);
     }
   };
 
-  // ── derived ────────────────────────────────────────────────────────────────
+  const handleRegenerate = async (tableNo) => {
+    const { data } = await regenerateQR(tableNo);
+    // update local tables state too
+    setTables((p) =>
+      p.map((t) =>
+        t.tableNo === tableNo
+          ? { ...t, qrCode: data.qrCode, qrUrl: data.qrUrl }
+          : t,
+      ),
+    );
+    return { data };
+  };
+
   const activeTables = tables.filter((t) => t.status === "Active" || !t.status);
   const occupied = activeTables.filter((t) => tableMap[t.tableNo]).length;
   const revenue = Object.values(tableMap).reduce(
     (s, o) => s + Number(o.total || 0),
     0,
   );
-  const covers = Object.values(tableMap).reduce((s, o) => {
-    const tbl = tables.find((t) => t.tableNo === Number(o.tableNo));
-    return s + (tbl?.seats || 0);
-  }, 0);
   const pendingCount = Object.values(invoiceMap).filter(
     (i) => i.invoiceStatus?.toLowerCase() === "pending",
   ).length;
@@ -1048,7 +1300,6 @@ export default function TablesPage() {
   const selectedOrder = selected ? tableMap[selected] || null : null;
   const selectedInv = selected ? invoiceMap[selected] || null : null;
 
-  // ── loading / error ────────────────────────────────────────────────────────
   if (loading)
     return (
       <div
@@ -1086,7 +1337,6 @@ export default function TablesPage() {
             borderRadius: 25,
             fontWeight: 600,
             cursor: "pointer",
-            fontFamily: "'DM Sans',sans-serif",
           }}
         >
           Retry
@@ -1096,7 +1346,7 @@ export default function TablesPage() {
 
   return (
     <div className="tables-root">
-      {/* ── Header ── */}
+      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -1160,7 +1410,6 @@ export default function TablesPage() {
             fontWeight: 600,
             cursor: "pointer",
             fontSize: 13,
-            fontFamily: "'DM Sans',sans-serif",
             boxShadow: `0 4px 16px ${PINK}44`,
             transition: "all .15s",
           }}
@@ -1177,7 +1426,7 @@ export default function TablesPage() {
         </button>
       </div>
 
-      {/* ── Stats ── */}
+      {/* Stats */}
       <div
         style={{
           display: "grid",
@@ -1196,7 +1445,7 @@ export default function TablesPage() {
           label="Active Revenue"
           val={`₹${Math.round(revenue).toLocaleString()}`}
         />
-        <StatCard label="Covers Seated" val={covers} />
+        <StatCard label="Total Tables" val={tables.length} />
         <StatCard
           label="Pending Invoices"
           val={pendingCount}
@@ -1204,7 +1453,7 @@ export default function TablesPage() {
         />
       </div>
 
-      {/* ── Legend ── */}
+      {/* Legend */}
       <div
         style={{
           display: "flex",
@@ -1222,7 +1471,6 @@ export default function TablesPage() {
           { label: "Placed", bg: "#dbeeff", border: "#378ADD" },
           { label: "Preparing", bg: "#fff3e0", border: "#BA7517" },
           { label: "Ready", bg: GREEN_LIGHT, border: GREEN },
-          { label: "Delivered", bg: GREEN_LIGHT, border: GREEN },
           {
             label: "Invoice pending",
             bg: "#fff0f5",
@@ -1256,27 +1504,23 @@ export default function TablesPage() {
         ))}
       </div>
 
-      {/* ── Floor Plan ── */}
+      {/* Floor plan */}
       <div
         style={{
           background: "#f7f5f1",
           borderRadius: 18,
           padding: 32,
-          border: `1.5px solid rgba(0,0,0,.07)`,
+          border: "1.5px solid rgba(0,0,0,.07)",
           boxShadow: "inset 0 2px 12px rgba(0,0,0,.03)",
         }}
       >
-        {/* Wall */}
         <div
           style={{
             height: 6,
             background: "rgba(0,0,0,.16)",
             borderRadius: "4px 4px 0 0",
-            marginBottom: 0,
           }}
         />
-
-        {/* Windows */}
         <div
           style={{
             display: "flex",
@@ -1313,36 +1557,59 @@ export default function TablesPage() {
           Window side
         </div>
 
-        {/* Tables grid */}
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 40,
-            justifyContent: "center",
-            paddingBottom: 28,
-          }}
-        >
-          {tables
-            .sort((a, b) => a.tableNo - b.tableNo)
-            .map((t) => (
-              <TableCard
-                key={t.tableNo}
-                config={{ id: t.tableNo, seats: t.seats }}
-                order={tableMap[t.tableNo] || null}
-                invoice={invoiceMap[t.tableNo] || null}
-                onClick={() =>
-                  setSelected(selected === t.tableNo ? null : t.tableNo)
-                }
-                isSelected={selected === t.tableNo}
-                tableStatus={t.status || "Active"}
-                onToggleStatus={handleToggleStatus}
-                onDelete={handleDelete}
-              />
-            ))}
-        </div>
+        {tables.length === 0 ? (
+          <div
+            style={{ textAlign: "center", padding: "48px 20px", color: "#ccc" }}
+          >
+            <div style={{ fontSize: 36, marginBottom: 10 }}>🪑</div>
+            <div style={{ fontSize: 14 }}>No tables yet</div>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                marginTop: 12,
+                padding: "10px 24px",
+                background: PINK,
+                color: WHITE,
+                border: "none",
+                borderRadius: 25,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              + Add First Table
+            </button>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 40,
+              justifyContent: "center",
+              paddingBottom: 28,
+            }}
+          >
+            {tables
+              .sort((a, b) => a.tableNo - b.tableNo)
+              .map((t) => (
+                <TableCard
+                  key={t.tableNo}
+                  config={{ id: t.tableNo, seats: t.seats }}
+                  order={tableMap[t.tableNo] || null}
+                  invoice={invoiceMap[t.tableNo] || null}
+                  onClick={() =>
+                    setSelected(selected === t.tableNo ? null : t.tableNo)
+                  }
+                  isSelected={selected === t.tableNo}
+                  tableStatus={t.status || "Active"}
+                  onToggleStatus={handleToggleStatus}
+                  onDelete={handleDelete}
+                  onQR={() => setQrTable(t)}
+                />
+              ))}
+          </div>
+        )}
 
-        {/* Dashed divider */}
         <div
           style={{
             width: "100%",
@@ -1352,8 +1619,6 @@ export default function TablesPage() {
               "repeating-linear-gradient(90deg,rgba(0,0,0,.1) 0,rgba(0,0,0,.1) 8px,transparent 8px,transparent 16px)",
           }}
         />
-
-        {/* Entrance */}
         <div style={{ textAlign: "center" }}>
           <div
             style={{
@@ -1378,7 +1643,7 @@ export default function TablesPage() {
         </div>
       </div>
 
-      {/* ── Order Drawer ── */}
+      {/* Order Drawer */}
       {selected && selectedConf && (
         <OrderDrawer
           config={{ id: selectedConf.tableNo, seats: selectedConf.seats }}
@@ -1390,17 +1655,20 @@ export default function TablesPage() {
         />
       )}
 
-      {/* ── Create Modal ── */}
+      {/* Create Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 6 }}>
+          <div
+            className="modal-box"
+            style={{ width: 380 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 4 }}>
               Add New Table
             </div>
             <div style={{ fontSize: 13, color: "#aaa", marginBottom: 22 }}>
-              Configure the new table for the dining floor.
+              A QR code will be generated automatically.
             </div>
-
             <label
               style={{
                 fontSize: 12,
@@ -1418,9 +1686,8 @@ export default function TablesPage() {
               value={newTableNo}
               onChange={(e) => setNewTableNo(e.target.value)}
               className="input-field"
-              style={{ marginBottom: 16 }}
+              style={{ marginBottom: 14 }}
             />
-
             <label
               style={{
                 fontSize: 12,
@@ -1443,6 +1710,27 @@ export default function TablesPage() {
               <option value="6">6 Seats</option>
             </select>
 
+            {/* QR info note */}
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                padding: "10px 14px",
+                background: "#fce4f3",
+                borderRadius: 10,
+                marginBottom: 20,
+                border: `1px solid ${PINK}22`,
+              }}
+            >
+              <span style={{ fontSize: 20 }}>⬛</span>
+              <div style={{ fontSize: 12, color: "#993556", lineHeight: 1.5 }}>
+                A unique QR code linking to{" "}
+                <strong>Table {newTableNo || "?"}</strong>'s order page will be
+                auto-generated. You can download or print it after creation.
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={() => setShowModal(false)}
@@ -1451,8 +1739,8 @@ export default function TablesPage() {
                   flex: 1,
                   padding: 12,
                   borderRadius: 10,
-                  justifyContent: "center",
                   display: "flex",
+                  justifyContent: "center",
                 }}
               >
                 Cancel
@@ -1470,7 +1758,6 @@ export default function TablesPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   fontSize: 14,
-                  fontFamily: "'DM Sans',sans-serif",
                   opacity: creating ? 0.6 : 1,
                   display: "flex",
                   alignItems: "center",
@@ -1480,15 +1767,25 @@ export default function TablesPage() {
               >
                 {creating ? (
                   <>
-                    <span className="spinner" /> Creating…
+                    <span className="spinner" />
+                    Creating…
                   </>
                 ) : (
-                  "Create Table"
+                  "Create + QR"
                 )}
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* QR Modal */}
+      {qrTable && (
+        <QRModal
+          table={qrTable}
+          onClose={() => setQrTable(null)}
+          onRegenerate={handleRegenerate}
+        />
       )}
     </div>
   );
