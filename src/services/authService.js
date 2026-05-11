@@ -5,3 +5,9 @@ export const verifyOTP = (phone, otp, name) =>
   api.post("/auth/verify-otp", { phone, otp, name });
 
 
+// src/services/authService.js
+// import api from "./api.js";
+
+// ✅ Only firebase-verify remains — no more send-otp/verify-otp
+export const firebaseVerify = (firebaseToken, name) =>
+  api.post("/auth/firebase-verify", { firebaseToken, name });
