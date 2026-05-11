@@ -272,7 +272,7 @@ export default function AdminLayout() {
           </button>
 
           <div style={{ padding: "6px 12px", fontSize: 10, color: "#ddd" }}>
-            Adda Cafe v1.0 · Bengal Tech
+            Adda Cafe v1.0 · Aisoraa
           </div>
         </div>
       </aside>

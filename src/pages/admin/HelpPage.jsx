@@ -244,7 +244,7 @@ export default function HelpPage() {
               marginBottom: 4,
             }}
           >
-            Bengal Tech Solutions
+            Aisoraa
           </div>
           <div
             style={{
@@ -348,8 +348,8 @@ export default function HelpPage() {
               icon: "✉️",
               bg: "#e6f1fb",
               label: "Email",
-              val: "support@bengaltech.in",
-              href: "mailto:support@bengaltech.in",
+              val: "support@Aisoraa.in",
+              href: "mailto:support@Aisoraa.in",
             },
             {
               icon: "💬",
@@ -362,7 +362,7 @@ export default function HelpPage() {
               icon: "🏢",
               bg: "#faeeda",
               label: "Company",
-              val: "Bengal Tech Solutions",
+              val: "Aisoraa",
               href: null,
             },
           ].map(({ icon, bg, label, val, href }) => (
@@ -590,7 +590,7 @@ export default function HelpPage() {
       >
         Built & maintained by{" "}
         <span style={{ color: "#e91e8c", fontWeight: 500 }}>
-          Bengal Tech Solutions
+Aisoraa
         </span>
         {" · "}+91 77972 33633
       </div>
