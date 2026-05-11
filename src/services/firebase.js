@@ -1,4 +1,4 @@
-// src/services/firebase.js
+// admin/src/services/firebase.js
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
