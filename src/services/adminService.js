@@ -40,10 +40,32 @@ export const deleteChef = (id) => api.delete(`admin/chefs/${id}`);
 
 //admin profile
 
-export const getRestaurantProfile = () => api.get("admin/restaurant/profile");
-export const updateRestaurantProfile = (data) =>
-  api.put("admin/restaurant/profile", data);
-export const uploadRestaurantLogo = (formData) =>
+// export const getRestaurantProfile = () => api.get("admin/restaurant/profile");
+// export const updateRestaurantProfile = (data) =>
+//   api.put("admin/restaurant/profile", data);
+// export const uploadRestaurantLogo = (formData) =>
+//   api.post("admin/restaurant/logo", formData, {
+//     headers: { "Content-Type": "multipart/form-data" },
+//   });
+// ── Restaurant Profile ─────────────────────────────────────────────────────
+export const getRestaurantProfile    = ()       => api.get("admin/restaurant/profile");
+export const updateRestaurantProfile = (data)   => api.put("admin/restaurant/profile", data);
+export const uploadRestaurantLogo    = (formData) =>
   api.post("admin/restaurant/logo", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+
+// ── Banners ────────────────────────────────────────────────────────────────
+export const uploadRestaurantBanner = (formData) =>
+  api.post("admin/restaurant/banner", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+export const updateRestaurantBanner = (bannerId, data) =>
+  api.patch(`admin/restaurant/banner/${bannerId}`, data);
+export const deleteRestaurantBanner = (bannerId) =>
+  api.delete(`admin/restaurant/banner/${bannerId}`);
+
+// ── Printer IPs ────────────────────────────────────────────────────────────
+export const addRestaurantPrinter    = (data)       => api.post("admin/restaurant/printer", data);
+export const updateRestaurantPrinter = (id, data)   => api.patch(`admin/restaurant/printer/${id}`, data);
+export const deleteRestaurantPrinter = (id)         => api.delete(`admin/restaurant/printer/${id}`);
