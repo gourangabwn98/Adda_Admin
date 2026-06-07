@@ -1163,10 +1163,11 @@ export default function ProfilePage() {
     restaurantName:"", phone:"", email:"", contactPerson:"", logo:"",
     address:"", city:"", latitude:"", longitude:"",
     dineInRange:50, deliveryRange:5000,
-    fssaiNumber:"", gstNumber:"", aboutRestaurant:"",
+    fssaiNumber:"", gstNumber:"", aboutRestaurant:"", gstRate: 18,
     openingTime:"09:00", closingTime:"22:00", avgDeliveryTime:30,
     minOrderAmount:0, freeDeliveryAbove:300, deliveryBaseFee:40, deliveryFeePerKm:8,
     serviceCharge:0, packingCharge:0,
+
     socialInstagram:"", socialFacebook:"", website:"",
     services:{ dineIn:true, takeAway:true, delivery:true },
     notificationSound:true,
@@ -1229,7 +1230,7 @@ export default function ProfilePage() {
       case "address": return pick("address","city","latitude","longitude","dineInRange","deliveryRange");
       case "biz":     return pick("fssaiNumber","gstNumber","aboutRestaurant");
       case "hours":   return pick("openingTime","closingTime","avgDeliveryTime");
-      case "pricing": return pick("minOrderAmount","freeDeliveryAbove","deliveryBaseFee","deliveryFeePerKm","serviceCharge","packingCharge");
+      case "pricing": return pick("minOrderAmount","freeDeliveryAbove","deliveryBaseFee","deliveryFeePerKm","serviceCharge","packingCharge","gstRate");
       case "social":  return pick("socialInstagram","socialFacebook","website");
       case "services":return pick("services","notificationSound");
       default:        return {};
@@ -1445,6 +1446,7 @@ export default function ProfilePage() {
             <ViewItem label="Phone"           value={orDash(profile.phone)} />
             <ViewItem label="Email"           value={orDash(profile.email)} />
             <ViewItem label="Contact person"  value={orDash(profile.contactPerson)} />
+            {/* <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  */}
           </div>
         }
         editContent={
@@ -1709,6 +1711,7 @@ export default function ProfilePage() {
             <ViewItem label="Delivery fee / km"  value={`₹${profile.deliveryFeePerKm}`} />
             <ViewItem label="Service charge"     value={`${profile.serviceCharge}%`} />
             <ViewItem label="Packing charge"     value={`₹${profile.packingCharge}`} />
+            <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  // ← REMOVE from here
           </div>
         }
         editContent={
@@ -1720,6 +1723,7 @@ export default function ProfilePage() {
               { label:"Delivery fee per km (₹)", key:"deliveryFeePerKm" },
               { label:"Service charge (%)",      key:"serviceCharge" },
               { label:"Packing charge (₹)",      key:"packingCharge" },
+              { label:"GST Rate (%)",            key:"gstRate" },
             ].map(({ label, key }) => (
               <Field key={key} label={label}>
                 <input className="pp-input" type="number" value={draft[key]}
