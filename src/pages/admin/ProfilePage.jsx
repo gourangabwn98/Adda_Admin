@@ -1785,7 +1785,7 @@ export default function ProfilePage() {
             <div style={{ borderTop:`1px solid #f5f5f5`, paddingTop:14, fontSize:14, color:"#555",
                           display:"flex", alignItems:"center", gap:8 }}>
               <span>{profile.notificationSound ? "🔔" : "🔕"}</span>
-              <span>{profile.notificationSound ? "Notification sound enabled" : "Notification sound disabled"}</span>
+              {/* <span>{profile.notificationSound ? "Notification sound enabled" : "Notification sound disabled"}</span> */}
             </div>
           </div>
         }
