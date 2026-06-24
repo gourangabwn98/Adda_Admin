@@ -1711,7 +1711,7 @@ export default function ProfilePage() {
             <ViewItem label="Delivery fee / km"  value={`₹${profile.deliveryFeePerKm}`} />
             <ViewItem label="Service charge"     value={`${profile.serviceCharge}%`} />
             <ViewItem label="Packing charge"     value={`₹${profile.packingCharge}`} />
-            <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  // ← REMOVE from here
+            <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  
           </div>
         }
         editContent={
