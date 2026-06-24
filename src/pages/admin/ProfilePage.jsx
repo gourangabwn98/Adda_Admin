@@ -1705,12 +1705,12 @@ export default function ProfilePage() {
         onEdit={() => startEdit("pricing")} onCancel={() => cancelEdit("pricing")} onSave={() => saveSection("pricing")}
         viewContent={
           <div className="pp-view-grid">
-            <ViewItem label="Min order amount"   value={`₹${profile.minOrderAmount}`} />
+            {/* <ViewItem label="Min order amount"   value={`₹${profile.minOrderAmount}`} />
             <ViewItem label="Free delivery above" value={`₹${profile.freeDeliveryAbove}`} />
             <ViewItem label="Delivery base fee"  value={`₹${profile.deliveryBaseFee}`} />
             <ViewItem label="Delivery fee / km"  value={`₹${profile.deliveryFeePerKm}`} />
             <ViewItem label="Service charge"     value={`${profile.serviceCharge}%`} />
-            <ViewItem label="Packing charge"     value={`₹${profile.packingCharge}`} />
+            <ViewItem label="Packing charge"     value={`₹${profile.packingCharge}`} /> */}
             <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  
           </div>
         }
@@ -1773,7 +1773,11 @@ export default function ProfilePage() {
           <div>
             <div className="pp-label" style={{ marginBottom:10 }}>Services offered</div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
-              {[{ key:"dineIn", label:"Dine-in" }, { key:"takeAway", label:"Take away" }, { key:"delivery", label:"Delivery" }]
+              {[{ key:"dineIn", label:"Dine-in" }, { key:"takeAway", label:"Take away" }, 
+              {/* { 
+                key:"delivery", label:"Delivery" 
+              } */}
+              ]
                 .map(({ key, label }) => (
                   <span key={key} className={`pp-badge${profile.services[key] ? " on" : ""}`}>{label}</span>
                 ))}
@@ -1790,7 +1794,7 @@ export default function ProfilePage() {
             <div className="pp-label" style={{ marginBottom:10 }}>Services offered</div>
             <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:20 }}>
               {[{ key:"dineIn", label:"Dine-in" }, { key:"takeAway", label:"Take away" },
-               { key:"delivery", label:"Delivery" }
+               {/* { key:"delivery", label:"Delivery" } */}
                ]
                 .map(({ key, label }) => (
                   <div key={key} className={`pp-chip${draft.services[key] ? " on" : ""}`} onClick={() => setService(key)}>
