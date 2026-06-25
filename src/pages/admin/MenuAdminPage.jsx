@@ -7,7 +7,7 @@ import {
   updateMenuItem,
   deleteMenuItem,
   createCategory,
-  deleteCategory
+  
 } from "../../services/menuService.js";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -425,120 +425,64 @@ function CategoryModal({ onClose, onSaved }) {
 }
 
 // ── Category Select with inline "+ New category" button ──────────────────────
-function CategorySelect({ value, categories, onChange, onOpenCreateModal, onDeleteCategory }) {
-  const [confirmDelete, setConfirmDelete] = useState(null); // holds category name to delete
-
-  const handleConfirmDelete = async () => {
-    try {
-      await onDeleteCategory(confirmDelete);
-      toast.success(`"${confirmDelete}" deleted`);
-    } catch {
-      toast.error("Failed to delete category");
-    } finally {
-      setConfirmDelete(null);
-    }
-  };
-
+function CategorySelect({ value, categories, onChange, onOpenCreateModal }) {
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-        <label style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>Category *</label>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 5,
+        }}
+      >
+        <label style={{ fontSize: 12, color: "#666", fontWeight: 600 }}>
+          Category *
+        </label>
         <button
           onClick={onOpenCreateModal}
           style={{
-            fontSize: 11, color: PINK, background: PINK_BG,
-            border: `1px solid #f4c0d1`, borderRadius: 20,
-            padding: "2px 10px", cursor: "pointer", fontWeight: 500,
+            fontSize: 11,
+            color: PINK,
+            background: PINK_BG,
+            border: `1px solid #f4c0d1`,
+            borderRadius: 20,
+            padding: "2px 10px",
+            cursor: "pointer",
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
           + New category
         </button>
       </div>
-
-      {/* List with delete buttons */}
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, overflow: "hidden", marginBottom: 6 }}>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%",
+          padding: "9px 12px",
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          fontSize: 13,
+          outline: "none",
+          background: WHITE,
+          cursor: "pointer",
+          boxSizing: "border-box",
+        }}
+      >
         {categories.length === 0 ? (
-          <div style={{ padding: "10px 12px", fontSize: 13, color: "#aaa" }}>
-            No categories — create one first
-          </div>
+          <option value="">No categories — create one first</option>
         ) : (
           categories.map((c) => (
-            <div
-              key={c}
-              onClick={() => onChange(c)}
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "9px 12px", cursor: "pointer", fontSize: 13,
-                background: value === c ? PINK_BG : WHITE,
-                color: value === c ? PINK : "#333",
-                fontWeight: value === c ? 600 : 400,
-                borderBottom: "1px solid #f5f5f5",
-                transition: "background .15s",
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {value === c && <span style={{ fontSize: 10 }}>●</span>}
-                {c}
-              </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
-                style={{
-                  background: "none", border: "none", cursor: "pointer",
-                  color: "#ccc", fontSize: 14, padding: "0 4px",
-                  lineHeight: 1, borderRadius: 4,
-                  transition: "color .15s",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = "#e53935"}
-                onMouseLeave={(e) => e.currentTarget.style.color = "#ccc"}
-                title={`Delete "${c}"`}
-              >
-                ✕
-              </button>
-            </div>
+            <option key={c} value={c}>
+              {c}
+            </option>
           ))
         )}
-      </div>
-
-      {/* Confirm delete popup */}
-      {confirmDelete && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,.5)",
-          zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <div style={{
-            background: WHITE, borderRadius: 16, padding: 28, width: 360,
-            boxShadow: "0 24px 64px rgba(0,0,0,.18)",
-          }}>
-            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 8 }}>Delete category?</div>
-            <div style={{ fontSize: 13, color: "#888", marginBottom: 22 }}>
-              Are you sure you want to delete <strong>"{confirmDelete}"</strong>?
-              Menu items in this category won't be deleted.
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => setConfirmDelete(null)}
-                style={{
-                  flex: 1, padding: "11px", border: "1.5px solid #eee",
-                  borderRadius: 10, background: WHITE, cursor: "pointer",
-                  fontSize: 14, fontWeight: 500, color: "#555",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDelete}
-                style={{
-                  flex: 1, padding: "11px", border: "none",
-                  borderRadius: 10, background: "#e53935", color: WHITE,
-                  cursor: "pointer", fontSize: 14, fontWeight: 600,
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </select>
     </div>
   );
 }
@@ -557,24 +501,6 @@ function ItemModal({ item, categories, onClose, onSaved, onCategoryCreated }) {
   const [showCatModal, setShowCatModal] = useState(false);
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
-
-  // Inside ItemModal, add this function:
-const handleDeleteCategory = async (catName) => {
-  // find the category id from name — you'll need to pass full cat objects down
-  // simplest: call the API by name, or pass cat objects instead of strings
-  await deleteCategory(catName); // adjust based on your API (id or name)
-  onCategoryCreated({ name: catName, _deleted: true }); // bubble up to remove from list
-  if (form.category === catName) set("category", "");
-};
-
-// Then update the CategorySelect usage:
-<CategorySelect
-  value={form.category}
-  categories={categories}
-  onChange={(v) => set("category", v)}
-  onOpenCreateModal={() => setShowCatModal(true)}
-  onDeleteCategory={handleDeleteCategory}  // ← add this
-/>
 
   // When a new category is created inside the nested modal
   const handleCategoryCreated = (newCat) => {
@@ -944,14 +870,12 @@ export default function MenuAdminPage() {
   };
 
   // Called when a new category is created from inside ItemModal OR the filter bar
- const handleCategoryCreated = (newCat) => {
-  if (newCat?._deleted) {
-    setCats((p) => p.filter((c) => c !== newCat.name));
-    return;
-  }
-  const name = typeof newCat === "string" ? newCat : newCat?.name;
-  if (name && !cats.includes(name)) setCats((p) => [...p, name]);
-};
+  const handleCategoryCreated = (newCat) => {
+    const name = typeof newCat === "string" ? newCat : newCat?.name;
+    if (name && !cats.includes(name)) {
+      setCats((p) => [...p, name]);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this item? This cannot be undone.")) return;
