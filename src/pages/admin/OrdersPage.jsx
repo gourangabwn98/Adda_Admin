@@ -107,7 +107,8 @@ const StatPill = ({ label, value, color, sub }) => (
 // ── OrderDetail (expand row) ──────────────────────────────────────────────────
 const OrderDetail = ({ order, onStatusChange }) => {
   const subtotal = order.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0;
-  const tax = Math.round(subtotal * 0.18);
+  // const tax = Math.round(subtotal * 0.18);
+  const tax=0;
   return (
     <div
       style={{
