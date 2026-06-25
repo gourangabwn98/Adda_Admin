@@ -597,7 +597,7 @@ function TableMap({
                       v: `₹${selectedOrder.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0}`,
                     },
                     {
-                      l: "GST (18%)",
+                      l: "GST (0%)",
                       v: `₹${Math.round((selectedOrder.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0) * 0.18)}`,
                     },
                   ].map((r) => (

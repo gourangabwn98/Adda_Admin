@@ -808,7 +808,7 @@ const OrderDrawer = ({
             >
               {[
                 { l: "Subtotal", v: `₹${subtotal.toLocaleString()}` },
-                { l: "GST (18%)", v: `₹${tax.toLocaleString()}` },
+                { l: "GST (0%)", v: `₹${tax.toLocaleString()}` },
               ].map((r) => (
                 <div
                   key={r.l}

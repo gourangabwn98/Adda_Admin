@@ -176,7 +176,7 @@ const OrderDetail = ({ order, onStatusChange }) => {
         >
           {[
             { l: "Subtotal", v: `₹${subtotal}` },
-            { l: "GST (18%)", v: `₹${tax}` },
+            {/* { l: "GST (18%)", v: `₹${tax}` }, */}
           ].map((r) => (
             <div
               key={r.l}
@@ -841,7 +841,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
                   {/* totals */}
                   {[
                     { l: "Subtotal", v: `₹${subtotal}`, c: "#888" },
-                    { l: "GST (18%)", v: `₹${tax}`, c: "#888" },
+                    { l: "GST (%)", v: `₹${tax}`, c: "#888" },
                     ...(discount > 0
                       ? [{ l: "Discount", v: `-₹${discount}`, c: "#3B6D11" }]
                       : []),

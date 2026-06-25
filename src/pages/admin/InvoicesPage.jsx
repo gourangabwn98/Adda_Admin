@@ -490,7 +490,7 @@ export default function InvoicesPage() {
                               >
                                 {[
                                   { label: "Subtotal", val: `₹${subtotal}` },
-                                  { label: "GST (18%)", val: `₹${tax}` },
+                                  { label: "GST (0%)", val: `₹${tax}` },
                                   ...(inv.discount > 0
                                     ? [
                                         {
