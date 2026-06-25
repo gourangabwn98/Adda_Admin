@@ -34,3 +34,4 @@ export const deleteMenuItem = (id) => api.delete(`/menu/${id}`);
 
 export const getCategories = () => api.get("/categories"); // ✅ correct
 export const createCategory = (data) => api.post("/categories", data);
+export const deleteCategory = (id) => api.delete(`/categories/${id}`);
