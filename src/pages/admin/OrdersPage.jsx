@@ -399,7 +399,8 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
     });
 
   const subtotal = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
-  const tax = Math.round(subtotal * 0.18);
+  // const tax = Math.round(subtotal * 0.18);
+  const tax=0;
   const discount = subtotal > 400 ? 10 : 0;
   const total = subtotal ;
 
