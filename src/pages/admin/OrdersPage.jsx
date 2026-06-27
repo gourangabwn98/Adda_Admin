@@ -921,6 +921,7 @@ export default function OrdersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
+  const [dateF, setDateF] = useState("");  // e.g. "2025-06-27"
 
   const fetchOrders = useCallback(() => {
     getAllOrders({ limit: 200 })
@@ -938,6 +939,22 @@ export default function OrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
+
+const filtered = orders.filter((o) => {
+  const q = search.toLowerCase();
+  const orderDate = new Date(o.createdAt).toISOString().slice(0, 10); // "YYYY-MM-DD"
+  return (
+    (filter === "All" || o.status === filter) &&
+    (typeF === "All" || o.orderType === typeF) &&
+    (payF === "All" || o.paymentStatus === payF) &&
+    (!dateF || orderDate === dateF) &&          // ← add this line
+    (!q ||
+      o.orderId?.toLowerCase().includes(q) ||
+      o.user?.name?.toLowerCase().includes(q) ||
+      o.user?.phone?.includes(q))
+  );
+});
+
   const handleStatusChange = async (id, newStatus) => {
     try {
       await updateOrderStatus(id, newStatus);
@@ -954,18 +971,18 @@ export default function OrdersPage() {
     setOrders((prev) => [newOrder, ...prev]);
   };
 
-  const filtered = orders.filter((o) => {
-    const q = search.toLowerCase();
-    return (
-      (filter === "All" || o.status === filter) &&
-      (typeF === "All" || o.orderType === typeF) &&
-      (payF === "All" || o.paymentStatus === payF) &&
-      (!q ||
-        o.orderId?.toLowerCase().includes(q) ||
-        o.user?.name?.toLowerCase().includes(q) ||
-        o.user?.phone?.includes(q))
-    );
-  });
+  // const filtered = orders.filter((o) => {
+  //   const q = search.toLowerCase();
+  //   return (
+  //     (filter === "All" || o.status === filter) &&
+  //     (typeF === "All" || o.orderType === typeF) &&
+  //     (payF === "All" || o.paymentStatus === payF) &&
+  //     (!q ||
+  //       o.orderId?.toLowerCase().includes(q) ||
+  //       o.user?.name?.toLowerCase().includes(q) ||
+  //       o.user?.phone?.includes(q))
+  //   );
+  // });
 
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
@@ -982,16 +999,25 @@ export default function OrdersPage() {
       ["Placed", "Preparing", "Ready"].includes(o.status),
     ).length,
   };
+const clearFilters = () => {
+  setSearch("");
+  setFilter("All");
+  setTypeF("All");
+  setPayF("All");
+  setDateF("");   // ← add
+  setPage(1);
+};
 
-  const clearFilters = () => {
-    setSearch("");
-    setFilter("All");
-    setTypeF("All");
-    setPayF("All");
-    setPage(1);
-  };
-  const hasFilters =
-    search || filter !== "All" || typeF !== "All" || payF !== "All";
+const hasFilters = search || filter !== "All" || typeF !== "All" || payF !== "All" || dateF;  // ← add dateF
+  // const clearFilters = () => {
+  //   setSearch("");
+  //   setFilter("All");
+  //   setTypeF("All");
+  //   setPayF("All");
+  //   setPage(1);
+  // };
+  // const hasFilters =
+  //   search || filter !== "All" || typeF !== "All" || payF !== "All";
 
   return (
     <>
@@ -1085,6 +1111,20 @@ export default function OrdersPage() {
               background: WHITE,
             }}
           />
+          <input
+  type="date"
+  value={dateF}
+  onChange={(e) => { setDateF(e.target.value); setPage(1); }}
+  style={{
+    padding: "9px 12px",
+    borderRadius: 8,
+    border: "0.5px solid rgba(0,0,0,.15)",
+    fontSize: 13,
+    background: WHITE,
+    cursor: "pointer",
+    color: dateF ? "#111" : "#aaa",
+  }}
+/>
           {[
             {
               val: filter,
