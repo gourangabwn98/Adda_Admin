@@ -113,16 +113,19 @@ export default function InvoicesPage() {
   });
 
   // stats
-  const totalRevenue = invoiceOrders
-    .filter((o) => o.paymentStatus === "Paid")
-    .reduce((s, o) => s + Number(o.total || 0), 0);
-  const paidCount = invoiceOrders.filter(
-    (o) => o.paymentStatus === "Paid",
-  ).length;
-  const pendingCount = invoiceOrders.filter(
-    (o) => o.paymentStatus === "Pending",
-  ).length;
-  const avgVal = paidCount ? Math.round(totalRevenue / paidCount) : 0;
+ const completedPaidOrders = invoiceOrders.filter(
+  (o) => o.status === "Completed" && o.paymentStatus === "Paid",
+);
+
+const totalRevenue = completedPaidOrders.reduce(
+  (s, o) => s + Number(o.total || 0),
+  0,
+);
+const paidCount = completedPaidOrders.length;
+const pendingCount = invoiceOrders.filter(
+  (o) => o.paymentStatus === "Pending",
+).length;
+const avgVal = paidCount ? Math.round(totalRevenue / paidCount) : 0;
 
   return (
     <>
@@ -149,7 +152,7 @@ export default function InvoicesPage() {
           value={`₹${Math.round(totalRevenue).toLocaleString()}`}
           color={PINK}
         />
-        <StatPill label="Paid" value={paidCount} color="#1D9E75" />
+        <StatPill label="Paid & Complete" value={paidCount} color="#1D9E75" />
         <StatPill label="Avg bill" value={`₹${avgVal.toLocaleString()}`} />
       </div>
 

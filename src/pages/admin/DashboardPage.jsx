@@ -1061,48 +1061,51 @@ export default function DashboardPage({ data }) {
   const [allTodayOrders, setAllTodayOrders] = useState([]);
   const [invoiceMap, setInvoiceMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [allOrders, setAllOrders] = useState([]); // ← NEW: full list, for all-time revenue
+// const [allTodayOrders, setAllTodayOrders] = useState([]);
+// const [invoiceMap, setInvoiceMap] = useState({});
+// const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [ordersRes, invoicesRes] = await Promise.all([
-        getAllOrders({ limit: 100 }),
-        getAllInvoices().catch(() => ({ data: { invoices: [] } })),
-      ]);
+const fetchData = useCallback(async () => {
+  try {
+    const [ordersRes, invoicesRes] = await Promise.all([
+      getAllOrders({ limit: 1000 }), // ← raised from 100, so Total revenue isn't undercounted
+      getAllInvoices().catch(() => ({ data: { invoices: [] } })),
+    ]);
 
-      const orders = (ordersRes.data.orders || []).filter((o) =>
-        isToday(o.createdAt),
-      );
-      const invoices = invoicesRes.data?.invoices || [];
+    const fullOrders = ordersRes.data.orders || [];               // ← NEW: everything fetched
+    const todayOrders = fullOrders.filter((o) => isToday(o.createdAt));
+    const invoices = invoicesRes.data?.invoices || [];
 
-      // build invoiceMap: tableNo → invoice (only active dining orders)
-      const activedining = orders.filter(
-        (o) =>
-          o.orderType === "Dining" &&
-          o.tableNo &&
-          !["Completed", "Cancelled"].includes(o.status),
-      );
-      const iMap = {};
-      invoices.forEach((inv) => {
-        const orderIds = inv.orders?.map(String) || [];
-        for (const o of activedining) {
-          if (orderIds.includes(String(o._id))) {
-            iMap[Number(o.tableNo)] = {
-              ...inv,
-              invoiceStatus: inv.status || inv.paymentStatus || "pending",
-            };
-            break;
-          }
+    const activedining = todayOrders.filter(
+      (o) =>
+        o.orderType === "Dining" &&
+        o.tableNo &&
+        !["Completed", "Cancelled"].includes(o.status),
+    );
+    const iMap = {};
+    invoices.forEach((inv) => {
+      const orderIds = inv.orders?.map(String) || [];
+      for (const o of activedining) {
+        if (orderIds.includes(String(o._id))) {
+          iMap[Number(o.tableNo)] = {
+            ...inv,
+            invoiceStatus: inv.status || inv.paymentStatus || "pending",
+          };
+          break;
         }
-      });
+      }
+    });
 
-      setAllTodayOrders(orders);
-      setInvoiceMap(iMap);
-    } catch {
-      toast.error("Failed to load today's data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    setAllOrders(fullOrders);       // ← NEW
+    setAllTodayOrders(todayOrders);
+    setInvoiceMap(iMap);
+  } catch {
+    toast.error("Failed to load today's data");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     fetchData();
@@ -1132,61 +1135,85 @@ export default function DashboardPage({ data }) {
     }
   };
 
-  const todayRevenue = allTodayOrders
-    .filter((o) => o.paymentStatus === "Paid")
-    .reduce((s, o) => s + Number(o.total || 0), 0);
-  const pendingInvoices = Object.values(invoiceMap).filter(
-    (i) => i.invoiceStatus?.toLowerCase() === "pending",
-  ).length;
+// ── Total revenue — Completed + Paid, all orders fetched ──
+const completedPaidAll = allOrders.filter(
+  (o) => o.status === "Completed" && o.paymentStatus === "Paid",
+);
+const totalRevenue = completedPaidAll.reduce(
+  (sum, o) => sum + Number(o.total || 0),
+  0,
+);
 
-  const statBoxes = [
-    {
-      label: "Total revenue",
-      value: `₹${(s.totalRevenue || 0).toLocaleString()}`,
-      sub: "All paid orders",
-      color: PINK,
-    },
-    {
-      label: "Total orders",
-      value: s.totalOrders || 0,
-      sub: `+${allTodayOrders.length} today`,
-      color: "#1D9E75",
-    },
-    {
-      label: "Registered users",
-      value: s.totalUsers || 0,
-      sub: "Guests included",
-      color: "#378ADD",
-    },
-    {
-      label: "Menu items",
-      value: s.totalItems || 0,
-      sub: "Available",
-      color: "#BA7517",
-    },
-    {
-      label: "Today's revenue",
-      value: `₹${Math.round(todayRevenue).toLocaleString()}`,
-      sub: `${allTodayOrders.length} orders`,
-      color: PINK,
-    },
-    {
-      label: "Avg order value",
-      value: `₹${allTodayOrders.length ? Math.round(allTodayOrders.reduce((s, o) => s + Number(o.total || 0), 0) / allTodayOrders.length) : 0}`,
-      sub: "Today",
-    },
-    {
-      label: "Active tables",
-      value: `${allTodayOrders.filter((o) => o.orderType === "Dining" && o.tableNo && !["Completed", "Cancelled"].includes(o.status)).length}`,
-      sub: "Dining now",
-    },
-    {
-      label: "Pending invoices",
-      value: pendingInvoices,
-      sub: "Needs attention",
-      color: pendingInvoices > 0 ? "#c62828" : "#1D9E75",
-    },
-  ];
+// ── Today's revenue — Completed + Paid, today only ──
+const completedPaidToday = allTodayOrders.filter(
+  (o) => o.status === "Completed" && o.paymentStatus === "Paid",
+);
+const todayRevenue = completedPaidToday.reduce(
+  (sum, o) => sum + Number(o.total || 0),
+  0,
+);
+
+const pendingInvoices = Object.values(invoiceMap).filter(
+  (i) => i.invoiceStatus?.toLowerCase() === "pending",
+).length;
+
+ const statBoxes = [
+  {
+    label: "Total revenue",
+    value: `₹${Math.round(totalRevenue).toLocaleString()}`, // ← was s.totalRevenue
+    sub: "Completed & paid orders",
+    color: PINK,
+  },
+  {
+    label: "Total orders",
+    value: s.totalOrders || allOrders.length,
+    sub: `+${allTodayOrders.length} today`,
+    color: "#1D9E75",
+  },
+  {
+    label: "Registered users",
+    value: s.totalUsers || 0,
+    sub: "Guests included",
+    color: "#378ADD",
+  },
+  {
+    label: "Menu items",
+    value: s.totalItems || 0,
+    sub: "Available",
+    color: "#BA7517",
+  },
+  {
+    label: "Today's revenue",
+    value: `₹${Math.round(todayRevenue).toLocaleString()}`,
+    sub: `${completedPaidToday.length} orders`, // ← was allTodayOrders.length (overcounted)
+    color: PINK,
+  },
+  {
+    label: "Avg order value",
+    value: `₹${
+      completedPaidToday.length
+        ? Math.round(todayRevenue / completedPaidToday.length)
+        : 0
+    }`, // ← was averaging over ALL today's orders regardless of status/payment
+    sub: "Today",
+  },
+  {
+    label: "Active tables",
+    value: `${allTodayOrders.filter(
+      (o) =>
+        o.orderType === "Dining" &&
+        o.tableNo &&
+        !["Completed", "Cancelled"].includes(o.status),
+    ).length}`,
+    sub: "Dining now",
+  },
+  {
+    label: "Pending invoices",
+    value: pendingInvoices,
+    sub: "Needs attention",
+    color: pendingInvoices > 0 ? "#c62828" : "#1D9E75",
+  },
+];
 
   return (
     <>

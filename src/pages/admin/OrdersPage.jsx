@@ -988,17 +988,17 @@ const filtered = orders.filter((o) => {
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
 
   const stats = {
-    total: orders.length,
-    today: orders.filter(
-      (o) => new Date(o.createdAt).toDateString() === new Date().toDateString(),
-    ).length,
-    revenue: orders
-      .filter((o) => o.paymentStatus === "Paid")
-      .reduce((s, o) => s + Number(o.total || 0), 0),
-    pending: orders.filter((o) =>
-      ["Placed", "Preparing", "Ready"].includes(o.status),
-    ).length,
-  };
+  total: orders.length,
+  today: orders.filter(
+    (o) => new Date(o.createdAt).toDateString() === new Date().toDateString(),
+  ).length,
+  revenue: orders
+    .filter((o) => o.status === "Completed" && o.paymentStatus === "Paid") // ← was just paymentStatus === "Paid"
+    .reduce((s, o) => s + Number(o.total || 0), 0),
+  pending: orders.filter((o) =>
+    ["Placed", "Preparing", "Ready"].includes(o.status),
+  ).length,
+};
 const clearFilters = () => {
   setSearch("");
   setFilter("All");
