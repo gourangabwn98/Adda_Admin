@@ -209,7 +209,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
-import { firebaseVerify } from "../services/authService.js";
+// import { firebaseVerify } from "../services/authService.js";
+import { firebaseVerify, checkAdminPhone } from "../services/authService.js";
 import { auth } from "../services/firebase.js";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import toast from "react-hot-toast";
@@ -225,56 +226,62 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSend = async () => {
-    if (phone.length < 10) return toast.error("Enter valid 10-digit phone");
-    try {
-      setLoading(true);
+ const handleSend = async () => {
+  if (phone.length < 10) return toast.error("Enter valid 10-digit phone");
+  try {
+    setLoading(true);
 
-      // clear old verifier
-      if (currentVerifier) {
-        try { currentVerifier.clear(); } catch (_) {}
-        currentVerifier = null;
-      }
-      const box = document.getElementById("recaptcha-box");
-      if (box) box.innerHTML = "";
+    // ← NEW: verify this phone is an admin BEFORE triggering Firebase OTP
+    await checkAdminPhone(phone);
 
-      // fresh verifier
-      currentVerifier = new RecaptchaVerifier(auth, "recaptcha-box", {
-        size: "invisible",
-      });
-      await currentVerifier.render();
-
-      const confirmationResult = await signInWithPhoneNumber(
-        auth,
-        `+91${phone}`,
-        currentVerifier
-      );
-
-      currentVerifier.clear();
-      if (box) box.innerHTML = "";
-
-      window.confirmationResult = confirmationResult;
-      setStep("otp");
-      toast.success("OTP sent!");
-
-    } catch (e) {
-      console.error("Send OTP error:", e.code, e.message);
-      if (currentVerifier) {
-        try { currentVerifier.clear(); } catch (_) {}
-        currentVerifier = null;
-      }
-      const box = document.getElementById("recaptcha-box");
-      if (box) box.innerHTML = "";
-
-      if (e.code === "auth/too-many-requests") {
-        toast.error("Too many attempts. Please wait.");
-      } else {
-        toast.error("Failed to send OTP. Try again.");
-      }
-    } finally {
-      setLoading(false);
+    // clear old verifier
+    if (currentVerifier) {
+      try { currentVerifier.clear(); } catch (_) {}
+      currentVerifier = null;
     }
-  };
+    const box = document.getElementById("recaptcha-box");
+    if (box) box.innerHTML = "";
+
+    // fresh verifier
+    currentVerifier = new RecaptchaVerifier(auth, "recaptcha-box", {
+      size: "invisible",
+    });
+    await currentVerifier.render();
+
+    const confirmationResult = await signInWithPhoneNumber(
+      auth,
+      `+91${phone}`,
+      currentVerifier
+    );
+
+    currentVerifier.clear();
+    if (box) box.innerHTML = "";
+
+    window.confirmationResult = confirmationResult;
+    setStep("otp");
+    toast.success("OTP sent!");
+
+  } catch (e) {
+    console.error("Send OTP error:", e.code, e.message);
+    if (currentVerifier) {
+      try { currentVerifier.clear(); } catch (_) {}
+      currentVerifier = null;
+    }
+    const box = document.getElementById("recaptcha-box");
+    if (box) box.innerHTML = "";
+
+    // ← NEW: surface the "not authorized" message from checkAdminPhone
+    if (e.response?.status === 403) {
+      toast.error(e.response.data?.message || "You are not authorized to access the admin panel");
+    } else if (e.code === "auth/too-many-requests") {
+      toast.error("Too many attempts. Please wait.");
+    } else {
+      toast.error("Failed to send OTP. Try again.");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleVerify = async () => {
     if (otp.length < 6) return toast.error("Enter 6-digit OTP");
