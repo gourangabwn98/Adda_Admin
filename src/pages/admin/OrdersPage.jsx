@@ -921,7 +921,9 @@ export default function OrdersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
-  const [dateF, setDateF] = useState("");  // e.g. "2025-06-27"
+  // const [dateF, setDateF] = useState("");  // e.g. "2025-06-27"
+  const [startDate, setStartDate] = useState(""); // e.g. "2025-06-01"
+const [endDate, setEndDate] = useState(""); 
 
   const fetchOrders = useCallback(() => {
     getAllOrders({ limit: 200 })
@@ -947,13 +949,33 @@ const filtered = orders.filter((o) => {
     (filter === "All" || o.status === filter) &&
     (typeF === "All" || o.orderType === typeF) &&
     (payF === "All" || o.paymentStatus === payF) &&
-    (!dateF || orderDate === dateF) &&          // ← add this line
+    (!startDate || orderDate >= startDate) &&   // ← from
+    (!endDate || orderDate <= endDate) &&       // ← to
     (!q ||
       o.orderId?.toLowerCase().includes(q) ||
       o.user?.name?.toLowerCase().includes(q) ||
       o.user?.phone?.includes(q))
   );
 });
+
+// ← add this: totals for whatever is currently filtered (respects date range + other filters)
+// ✅ Replace your existing rangeStats block with this
+
+// Orders within the selected date range — independent of Status/Type/Payment dropdowns,
+// so "Completed + Paid" revenue isn't accidentally zeroed out by an unrelated filter.
+const ordersInRange = orders.filter((o) => {
+  const orderDate = new Date(o.createdAt).toISOString().slice(0, 10);
+  return (!startDate || orderDate >= startDate) && (!endDate || orderDate <= endDate);
+});
+
+const rangeStats = {
+  count: filtered.filter(
+    (o) => o.status === "Completed" && o.paymentStatus === "Paid"
+  ).length,
+  amount: ordersInRange
+    .filter((o) => o.status === "Completed" && o.paymentStatus === "Paid")
+    .reduce((s, o) => s + Number(o.total || 0), 0),
+};
 
   const handleStatusChange = async (id, newStatus) => {
     try {
@@ -1004,11 +1026,15 @@ const clearFilters = () => {
   setFilter("All");
   setTypeF("All");
   setPayF("All");
-  setDateF("");   // ← add
+  setStartDate("");   // ← was setDateF("")
+  setEndDate("");      // ← new
   setPage(1);
 };
 
-const hasFilters = search || filter !== "All" || typeF !== "All" || payF !== "All" || dateF;  // ← add dateF
+const hasFilters =
+  search || filter !== "All" || typeF !== "All" || payF !== "All" || startDate || endDate;
+
+// const hasFilters = search || filter !== "All" || typeF !== "All" || payF !== "All" || dateF;  // ← add dateF
   // const clearFilters = () => {
   //   setSearch("");
   //   setFilter("All");
@@ -1111,20 +1137,73 @@ const hasFilters = search || filter !== "All" || typeF !== "All" || payF !== "Al
               background: WHITE,
             }}
           />
-          <input
-  type="date"
-  value={dateF}
-  onChange={(e) => { setDateF(e.target.value); setPage(1); }}
+          <div
   style={{
-    padding: "9px 12px",
-    borderRadius: 8,
-    border: "0.5px solid rgba(0,0,0,.15)",
-    fontSize: 13,
-    background: WHITE,
-    cursor: "pointer",
-    color: dateF ? "#111" : "#aaa",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
   }}
-/>
+>
+  <input
+    type="date"
+    value={startDate}
+    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+    style={{
+      padding: "9px 12px",
+      borderRadius: 8,
+      border: "0.5px solid rgba(0,0,0,.15)",
+      fontSize: 13,
+      background: WHITE,
+      cursor: "pointer",
+      color: startDate ? "#111" : "#aaa",
+    }}
+  />
+  <span style={{ fontSize: 12, color: "#aaa" }}>to</span>
+  <input
+    type="date"
+    value={endDate}
+    min={startDate || undefined}
+    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+    style={{
+      padding: "9px 12px",
+      borderRadius: 8,
+      border: "0.5px solid rgba(0,0,0,.15)",
+      fontSize: 13,
+      background: WHITE,
+      cursor: "pointer",
+      color: endDate ? "#111" : "#aaa",
+    }}
+  />
+
+  {/* totals for current range/filters */}
+  {(startDate || endDate) && (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 14px",
+        borderRadius: 20,
+        background: "rgba(233,30,140,.07)",
+        border: "0.5px solid rgba(233,30,140,.2)",
+        fontSize: 12,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ color: "#888" }}>
+        📦 <b style={{ color: "#111" }}>{rangeStats.count}</b> order
+        {rangeStats.count !== 1 ? "s" : ""}
+      </span>
+      <span style={{ color: "rgba(0,0,0,.15)" }}>|</span>
+      <span style={{ color: "#888" }}>
+        💰 <b style={{ color: PINK }}>
+          ₹{Math.round(rangeStats.amount).toLocaleString()}
+        </b>
+      </span>
+    </div>
+  )}
+</div>
           {[
             {
               val: filter,
