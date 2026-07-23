@@ -926,8 +926,8 @@ export default function OrdersPage() {
 const [endDate, setEndDate] = useState(""); 
 
   const fetchOrders = useCallback(() => {
-    // getAllOrders({ limit: 200 })
-    getAllOrders()
+    getAllOrders({ limit: 10000 })
+    
       .then((r) => {
         setOrders(r.data?.orders || []);
         setLoading(false);
