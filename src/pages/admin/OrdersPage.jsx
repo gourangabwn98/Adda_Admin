@@ -1366,6 +1366,7 @@ const hasFilters =
                     {[
                       "",
                       "Order ID",
+                       "Table",  
                       "Customer",
                       "Items",
                       "Amount",
@@ -1439,6 +1440,22 @@ const hasFilters =
                           >
                             {o.orderId}
                           </td>
+                          <td style={{ padding: "12px", fontWeight: 500, color: "#111", whiteSpace: "nowrap" }}>
+  {o.tableNo ? (
+    <span style={{
+      background: "#fbeaf0",
+      color: "#e91e8c",
+      padding: "3px 10px",
+      borderRadius: 20,
+      fontSize: 12,
+      fontWeight: 600,
+    }}>
+      T{o.tableNo}
+    </span>
+  ) : (
+    <span style={{ color: "#ccc", fontSize: 12 }}>—</span>
+  )}
+</td>
                           <td style={{ padding: "12px" }}>
                             <div style={{ fontWeight: 500 }}>
                               {o.user?.name || "Guest"}
@@ -1529,10 +1546,7 @@ const hasFilters =
                               borderBottom: "0.5px solid rgba(0,0,0,.05)",
                             }}
                           >
-                            <td
-                              colSpan={10}
-                              style={{ padding: "4px 12px 16px" }}
-                            >
+                            <td colSpan={11} style={{ padding: "4px 12px 16px" }}>
                               <OrderDetail
                                 order={o}
                                 onStatusChange={(id, s) => {
