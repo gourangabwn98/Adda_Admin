@@ -300,9 +300,9 @@ const avgVal = paidCount ? Math.round(totalRevenue / paidCount) : 0;
               <tbody>
                 {filtered.map((inv) => {
                   const isOpen = expanded === inv._id;
-                  const subtotal =
-                    inv.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0;
-                  const tax = Math.round(subtotal * 0.18);
+                 const subtotal = inv.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0;
+const tax = inv.tax || 0;
+const serviceCharge = inv.serviceCharge || 0;
                   return (
                     <>
                       <tr
@@ -491,18 +491,11 @@ const avgVal = paidCount ? Math.round(totalRevenue / paidCount) : 0;
                                   paddingTop: 10,
                                 }}
                               >
-                                {[
-                                  { label: "Subtotal", val: `₹${subtotal}` },
-                                  { label: "GST (0%)", val: `₹${tax}` },
-                                  ...(inv.discount > 0
-                                    ? [
-                                        {
-                                          label: "Discount",
-                                          val: `-₹${inv.discount}`,
-                                        },
-                                      ]
-                                    : []),
-                                ].map((r) => (
+                               {[
+  { label: "Subtotal", val: `₹${subtotal}` },
+  ...(tax > 0 ? [{ label: "GST", val: `₹${tax}` }] : []),
+  ...(serviceCharge > 0 ? [{ label: "Service Charge", val: `₹${serviceCharge}` }] : []),
+].map((r) => (
                                   <div
                                     key={r.label}
                                     style={{
