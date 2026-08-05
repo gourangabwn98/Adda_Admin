@@ -1703,26 +1703,26 @@ export default function ProfilePage() {
         icon="₹" iconBg={GREEN_BG} title="Pricing & delivery"
         editing={editing.pricing}
         onEdit={() => startEdit("pricing")} onCancel={() => cancelEdit("pricing")} onSave={() => saveSection("pricing")}
-        viewContent={
-          <div className="pp-view-grid">
-            {/* <ViewItem label="Min order amount"   value={`₹${profile.minOrderAmount}`} />
-            <ViewItem label="Free delivery above" value={`₹${profile.freeDeliveryAbove}`} />
-            <ViewItem label="Delivery base fee"  value={`₹${profile.deliveryBaseFee}`} />
-            <ViewItem label="Delivery fee / km"  value={`₹${profile.deliveryFeePerKm}`} />
-            <ViewItem label="Service charge"     value={`${profile.serviceCharge}%`} />
-            <ViewItem label="Packing charge"     value={`₹${profile.packingCharge}`} /> */}
-            <ViewItem label="GST Rate" value={`${profile.gstRate}%`} />  
-          </div>
+       viewContent={
+  <div className="pp-view-grid">
+    <ViewItem label="GST Rate (%)" value={`${profile.gstRate ?? 0}%`} />
+    <ViewItem
+      label="Service Charge (₹ per item)"
+      value={
+        profile.serviceCharge > 0
+          ? `₹${profile.serviceCharge} per item`
+          : "Not set"
+      }
+    />
+  </div>
+
         }
         editContent={
           <div className="pp-edit-grid">
             {[
-              { label:"Min order amount (₹)",   key:"minOrderAmount" },
-              { label:"Free delivery above (₹)", key:"freeDeliveryAbove" },
-              { label:"Delivery base fee (₹)",  key:"deliveryBaseFee" },
-              { label:"Delivery fee per km (₹)", key:"deliveryFeePerKm" },
-              { label:"Service charge (%)",      key:"serviceCharge" },
-              { label:"Packing charge (₹)",      key:"packingCharge" },
+              
+              { label:"Service Charge (₹ per item qty)", key:"serviceCharge" },
+             
               { label:"GST Rate (%)",            key:"gstRate" },
             ].map(({ label, key }) => (
               <Field key={key} label={label}>
