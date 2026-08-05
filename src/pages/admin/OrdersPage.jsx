@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import {
   getAllOrders,
+  getRestaurantProfile,
   updateOrderStatus,
 } from "../../services/adminService.js";
 import { getMenu } from "../../services/menuService.js";
@@ -176,7 +177,13 @@ const OrderDetail = ({ order, onStatusChange }) => {
           }}
         >
           {[
-            { l: "Subtotal", v: `₹${subtotal}` },
+           { l: "Subtotal", v: `₹${subtotal}` },
+  ...(order.serviceCharge > 0
+    ? [{ l: `Service Charge`, v: `₹${order.serviceCharge}` }]
+    : []),
+  ...(order.tax > 0
+    ? [{ l: `GST`, v: `₹${order.tax}` }]
+    : []),
             {/* { l: "GST (18%)", v: `₹${tax}` }, */}
           ].map((r) => (
             <div
@@ -193,20 +200,7 @@ const OrderDetail = ({ order, onStatusChange }) => {
               <span>{r.v}</span>
             </div>
           ))}
-          {order.discount > 0 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 12,
-                color: "#3B6D11",
-                marginBottom: 5,
-              }}
-            >
-              <span>Discount</span>
-              <span>-₹{order.discount}</span>
-            </div>
-          )}
+          
           <div
             style={{
               display: "flex",
@@ -365,18 +359,25 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
   const [customerPhone, setCustomerPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [menuLoading, setMenuLoading] = useState(true);
+  const [serviceChargePerItem, setServiceChargePerItem] = useState(0);
+  const [gstRate, setGstRate] = useState(0);
 
   useEffect(() => {
     getMenu({})
-      .then((r) => {
-        setMenuItems(r.data || []);
-        setMenuLoading(false);
-      })
+      .then((r) => { setMenuItems(r.data || []); setMenuLoading(false); })
       .catch(() => setMenuLoading(false));
+
+    getRestaurantProfile()
+      .then((res) => {
+        const p = res.data?.data || res.data;
+        setServiceChargePerItem(p?.serviceCharge || 0);
+        setGstRate(p?.gstRate || 0);
+      })
+      .catch(() => {});
   }, []);
 
   const filtered = menuItems.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase()),
+    m.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const getQty = (id) => cart.find((c) => c.item._id === id)?.qty || 0;
@@ -398,11 +399,12 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
         : p.map((c) => (c.item._id === id ? { ...c, qty: c.qty - 1 } : c));
     });
 
-  const subtotal = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
-  // const tax = Math.round(subtotal * 0.18);
-  const tax=0;
-  const discount = subtotal > 400 ? 10 : 0;
-  const total = subtotal ;
+  const subtotal         = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
+  const totalQty         = cart.reduce((s, c) => s + c.qty, 0);
+  const tax              = Math.round(subtotal * (gstRate / 100));
+  const serviceChargeAmt = serviceChargePerItem * totalQty;
+  // const discount         = subtotal > 400 ? 10 : 0;
+  const total            = subtotal + tax + serviceChargeAmt;
 
   const handleSubmit = async () => {
     if (!cart.length) return toast.error("Add at least one item");
@@ -427,241 +429,83 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
   };
 
   const inp = {
-    padding: "9px 12px",
-    borderRadius: 8,
-    border: "0.5px solid rgba(0,0,0,.15)",
-    fontSize: 13,
-    outline: "none",
-    background: WHITE,
-    width: "100%",
-    boxSizing: "border-box",
+    padding: "9px 12px", borderRadius: 8,
+    border: "0.5px solid rgba(0,0,0,.15)", fontSize: 13,
+    outline: "none", background: WHITE, width: "100%", boxSizing: "border-box",
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,.45)",
-        zIndex: 999,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          background: WHITE,
-          borderRadius: 16,
-          width: "100%",
-          maxWidth: 760,
-          maxHeight: "92vh",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* ── header ── */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "18px 22px",
-            borderBottom: "0.5px solid rgba(0,0,0,.08)",
-          }}
-        >
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 999,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: WHITE, borderRadius: 16, width: "100%", maxWidth: 760,
+        maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+
+        {/* header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "18px 22px", borderBottom: "0.5px solid rgba(0,0,0,.08)" }}>
           <div>
-            <div style={{ fontWeight: 500, fontSize: 17 }}>
-              Create new order
-            </div>
-            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>
-              Walk-in or manual order entry
-            </div>
+            <div style={{ fontWeight: 500, fontSize: 17 }}>Create new order</div>
+            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Walk-in or manual order entry</div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: "50%",
-              border: "0.5px solid rgba(0,0,0,.15)",
-              background: "#f5f5f5",
-              cursor: "pointer",
-              fontSize: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#666",
-            }}
-          >
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%",
+            border: "0.5px solid rgba(0,0,0,.15)", background: "#f5f5f5", cursor: "pointer",
+            fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}>
             ✕
           </button>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 340px",
-            flex: 1,
-            overflow: "hidden",
-          }}
-        >
-          {/* ── LEFT: menu picker ── */}
-          <div
-            style={{
-              padding: "16px 20px",
-              borderRight: "0.5px solid rgba(0,0,0,.08)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              overflowY: "auto",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 500,
-                color: "#aaa",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", flex: 1, overflow: "hidden" }}>
+
+          {/* LEFT: menu picker */}
+          <div style={{ padding: "16px 20px", borderRight: "0.5px solid rgba(0,0,0,.08)",
+            display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5, textTransform: "uppercase" }}>
               Select items
             </div>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search menu items…"
-              style={inp}
-            />
+            <input value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search menu items…" style={inp} />
 
             {menuLoading ? (
-              <div style={{ textAlign: "center", padding: 32, color: "#aaa" }}>
-                Loading menu…
-              </div>
+              <div style={{ textAlign: "center", padding: 32, color: "#aaa" }}>Loading menu…</div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {filtered.length === 0 && (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: 24,
-                      color: "#bbb",
-                      fontSize: 13,
-                    }}
-                  >
+                  <div style={{ textAlign: "center", padding: 24, color: "#bbb", fontSize: 13 }}>
                     No items found
                   </div>
                 )}
                 {filtered.map((m) => {
                   const qty = getQty(m._id);
                   return (
-                    <div
-                      key={m._id} // ← key on the outermost element
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border:
-                          qty > 0
-                            ? "0.5px solid rgba(233,30,140,.25)"
-                            : "0.5px solid rgba(0,0,0,.08)",
-                        background: qty > 0 ? "rgba(233,30,140,.04)" : WHITE,
-                      }}
-                    >
-                      {/* image or emoji */}
+                    <div key={m._id} style={{ display: "flex", alignItems: "center", gap: 12,
+                      padding: "10px 12px", borderRadius: 10,
+                      border: qty > 0 ? "0.5px solid rgba(233,30,140,.25)" : "0.5px solid rgba(0,0,0,.08)",
+                      background: qty > 0 ? "rgba(233,30,140,.04)" : WHITE }}>
                       <ItemImage src={m.image} name={m.name} />
-
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 13 }}>
-                          {m.name}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#aaa" }}>
-                          {m.category}
-                        </div>
+                        <div style={{ fontWeight: 500, fontSize: 13 }}>{m.name}</div>
+                        <div style={{ fontSize: 11, color: "#aaa" }}>{m.category}</div>
                       </div>
-
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          color: PINK,
-                          minWidth: 44,
-                          textAlign: "right",
-                        }}
-                      >
+                      <div style={{ fontWeight: 500, color: PINK, minWidth: 44, textAlign: "right" }}>
                         ₹{m.price}
                       </div>
-
-                      {/* qty controls */}
                       {qty === 0 ? (
-                        <button
-                          onClick={() => addItem(m)}
-                          style={{
-                            padding: "5px 14px",
-                            borderRadius: 20,
-                            background: PINK,
-                            color: WHITE,
-                            border: "none",
-                            cursor: "pointer",
-                            fontSize: 12,
-                            fontWeight: 600,
-                          }}
-                        >
+                        <button onClick={() => addItem(m)} style={{ padding: "5px 14px",
+                          borderRadius: 20, background: PINK, color: WHITE, border: "none",
+                          cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
                           Add
                         </button>
                       ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <button
-                            onClick={() => removeItem(m._id)}
-                            style={{
-                              width: 26,
-                              height: 26,
-                              borderRadius: "50%",
-                              border: `1.5px solid ${PINK}`,
-                              background: WHITE,
-                              color: PINK,
-                              cursor: "pointer",
-                              fontWeight: 700,
-                              fontSize: 16,
-                              lineHeight: 1,
-                            }}
-                          >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <button onClick={() => removeItem(m._id)} style={{ width: 26, height: 26,
+                            borderRadius: "50%", border: `1.5px solid ${PINK}`, background: WHITE,
+                            color: PINK, cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
                             −
                           </button>
-                          <span
-                            style={{
-                              fontWeight: 700,
-                              minWidth: 18,
-                              textAlign: "center",
-                            }}
-                          >
-                            {qty}
-                          </span>
-                          <button
-                            onClick={() => addItem(m)}
-                            style={{
-                              width: 26,
-                              height: 26,
-                              borderRadius: "50%",
-                              background: PINK,
-                              color: WHITE,
-                              border: "none",
-                              cursor: "pointer",
-                              fontWeight: 700,
-                              fontSize: 16,
-                              lineHeight: 1,
-                            }}
-                          >
+                          <span style={{ fontWeight: 700, minWidth: 18, textAlign: "center" }}>{qty}</span>
+                          <button onClick={() => addItem(m)} style={{ width: 26, height: 26,
+                            borderRadius: "50%", background: PINK, color: WHITE, border: "none",
+                            cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
                             +
                           </button>
                         </div>
@@ -673,232 +517,123 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
             )}
           </div>
 
-          {/* ── RIGHT: summary + details ── */}
-          <div
-            style={{
-              padding: "16px 20px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 14,
-              overflowY: "auto",
-            }}
-          >
+          {/* RIGHT: summary + details */}
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column",
+            gap: 14, overflowY: "auto" }}>
+
             {/* order type */}
             <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "#aaa",
-                  letterSpacing: 0.5,
-                  textTransform: "uppercase",
-                  marginBottom: 8,
-                }}
-              >
-                Order type
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+                textTransform: "uppercase", marginBottom: 8 }}>Order type</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {["Dining", "Take Away"].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setOrderType(t)}
-                    style={{
-                      flex: 1,
-                      padding: "9px 0",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: 500,
-                      fontSize: 13,
-                      border:
-                        orderType === t
-                          ? `2px solid ${PINK}`
-                          : "0.5px solid rgba(0,0,0,.15)",
-                      background: orderType === t ? "#fbeaf0" : WHITE,
-                      color: orderType === t ? PINK : "#555",
-                    }}
-                  >
+                  <button key={t} onClick={() => setOrderType(t)} style={{ flex: 1, padding: "9px 0",
+                    borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: 13,
+                    border: orderType === t ? `2px solid ${PINK}` : "0.5px solid rgba(0,0,0,.15)",
+                    background: orderType === t ? "#fbeaf0" : WHITE,
+                    color: orderType === t ? PINK : "#555" }}>
                     {t === "Dining" ? "🪑" : "🛍️"} {t}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* table number — dining only */}
+            {/* table number */}
             {orderType === "Dining" && (
               <div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: "#aaa",
-                    letterSpacing: 0.5,
-                    textTransform: "uppercase",
-                    marginBottom: 8,
-                  }}
-                >
-                  Table number
-                </div>
-                <input
-                  type="number"
-                  min={1}
-                  max={8}
-                  value={tableNo}
-                  onChange={(e) => setTableNo(e.target.value)}
-                  placeholder="e.g. 3"
-                  style={inp}
-                />
+                <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+                  textTransform: "uppercase", marginBottom: 8 }}>Table number</div>
+                <input type="number" min={1} value={tableNo}
+                  onChange={(e) => setTableNo(e.target.value)} placeholder="e.g. 3" style={inp} />
               </div>
             )}
 
             {/* optional customer */}
             <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "#aaa",
-                  letterSpacing: 0.5,
-                  textTransform: "uppercase",
-                  marginBottom: 8,
-                }}
-              >
-                Customer (optional)
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+                textTransform: "uppercase", marginBottom: 8 }}>Customer (optional)</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Customer name"
-                  style={inp}
-                />
-                <input
-                  value={customerPhone}
-                  onChange={(e) =>
-                    setCustomerPhone(e.target.value.replace(/\D/g, ""))
-                  }
-                  maxLength={10}
-                  placeholder="Phone number"
-                  style={inp}
-                />
+                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Customer name" style={inp} />
+                <input value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value.replace(/\D/g, ""))}
+                  maxLength={10} placeholder="Phone number" style={inp} />
               </div>
             </div>
 
             {/* cart summary */}
             <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 500,
-                  color: "#aaa",
-                  letterSpacing: 0.5,
-                  textTransform: "uppercase",
-                  marginBottom: 8,
-                }}
-              >
-                Order summary
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+                textTransform: "uppercase", marginBottom: 8 }}>Order summary</div>
 
               {cart.length === 0 ? (
-                <div
-                  style={{
-                    textAlign: "center",
-                    padding: "20px 0",
-                    color: "#ccc",
-                    fontSize: 13,
-                  }}
-                >
+                <div style={{ textAlign: "center", padding: "20px 0", color: "#ccc", fontSize: 13 }}>
                   No items added yet
                 </div>
               ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    marginBottom: 12,
-                  }}
-                >
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                  {/* item rows */}
                   {cart.map((c) => (
-                    <div
-                      key={c.item._id} // ← key here
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        fontSize: 13,
-                        padding: "6px 0",
-                        borderBottom: "0.5px solid rgba(0,0,0,.06)",
-                      }}
-                    >
-                      <span>
-                        {c.item.name}{" "}
-                        <span style={{ color: "#aaa" }}>×{c.qty}</span>
-                      </span>
-                      <span style={{ fontWeight: 500 }}>
-                        ₹{c.item.price * c.qty}
-                      </span>
+                    <div key={c.item._id} style={{ display: "flex", justifyContent: "space-between",
+                      alignItems: "center", fontSize: 13, padding: "6px 0",
+                      borderBottom: "0.5px solid rgba(0,0,0,.06)" }}>
+                      <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
+                      <span style={{ fontWeight: 500 }}>₹{c.item.price * c.qty}</span>
                     </div>
                   ))}
 
-                  {/* totals */}
+                  {/* ── totals ── */}
                   {[
                     { l: "Subtotal", v: `₹${subtotal}`, c: "#888" },
-                    { l: "GST (%)", v: `₹${tax}`, c: "#888" },
-                    ...(discount > 0
-                      ? [{ l: "Discount", v: `-₹${discount}`, c: "#3B6D11" }]
+                    ...(tax > 0
+                      ? [{ l: `GST (${gstRate}%)`, v: `₹${tax}`, c: "#888" }]
                       : []),
+                    ...(serviceChargeAmt > 0
+                      ? [{
+                          l: `Service Charge (₹${serviceChargePerItem} × ${totalQty} item${totalQty !== 1 ? "s" : ""})`,
+                          v: `₹${serviceChargeAmt}`,
+                          c: "#888",
+                        }]
+                      : []),
+                    
                   ].map((r) => (
-                    <div
-                      key={r.l}
-                      style={{
-                        fontSize: 12,
-                        color: r.c,
-                        display: "flex",
-                        justifyContent: "space-between",
-                      }}
-                    >
+                    <div key={r.l} style={{ fontSize: 12, color: r.c,
+                      display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
                       <span>{r.l}</span>
                       <span>{r.v}</span>
                     </div>
                   ))}
 
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontWeight: 500,
-                      fontSize: 15,
-                      borderTop: "0.5px solid rgba(0,0,0,.08)",
-                      paddingTop: 8,
-                      marginTop: 4,
-                    }}
-                  >
+                  {/* grand total */}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 500,
+                    fontSize: 15, borderTop: "0.5px solid rgba(0,0,0,.08)", paddingTop: 8, marginTop: 4 }}>
                     <span>Total</span>
                     <span style={{ color: PINK }}>₹{total}</span>
                   </div>
+
+                  {/* ── charge info pill ── */}
+                  {(serviceChargeAmt > 0 || tax > 0) && (
+                    <div style={{ fontSize: 11, color: "#aaa", background: "#f8f8f8",
+                      borderRadius: 8, padding: "6px 10px", marginTop: 4, lineHeight: 1.5 }}>
+                      {serviceChargeAmt > 0 && (
+                        <div>⚡ ₹{serviceChargePerItem}/item × {totalQty} = ₹{serviceChargeAmt} service charge</div>
+                      )}
+                      {tax > 0 && (
+                        <div>🧾 {gstRate}% GST = ₹{tax}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* submit */}
-            <button
-              onClick={handleSubmit}
-              disabled={loading || cart.length === 0}
-              style={{
-                width: "100%",
-                padding: "13px 0",
-                borderRadius: 25,
-                border: "none",
-                background: loading || cart.length === 0 ? "#ccc" : PINK,
-                color: WHITE,
-                fontWeight: 700,
-                fontSize: 14,
-                marginTop: "auto",
-                cursor:
-                  loading || cart.length === 0 ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? "Placing order…" : "Place Order"}
+            <button onClick={handleSubmit} disabled={loading || cart.length === 0}
+              style={{ width: "100%", padding: "13px 0", borderRadius: 25, border: "none",
+                background: loading || cart.length === 0 ? "#ccc" : PINK, color: WHITE,
+                fontWeight: 700, fontSize: 14, marginTop: "auto",
+                cursor: loading || cart.length === 0 ? "not-allowed" : "pointer" }}>
+              {loading ? "Placing order…" : `Place Order · ₹${total}`}
             </button>
           </div>
         </div>
@@ -1366,6 +1101,7 @@ const hasFilters =
                     {[
                       "",
                       "Order ID",
+                       "Table",  
                       "Customer",
                       "Items",
                       "Amount",
@@ -1439,6 +1175,22 @@ const hasFilters =
                           >
                             {o.orderId}
                           </td>
+                          <td style={{ padding: "12px", fontWeight: 500, color: "#111", whiteSpace: "nowrap" }}>
+  {o.tableNo ? (
+    <span style={{
+      background: "#fbeaf0",
+      color: "#e91e8c",
+      padding: "3px 10px",
+      borderRadius: 20,
+      fontSize: 12,
+      fontWeight: 600,
+    }}>
+      T{o.tableNo}
+    </span>
+  ) : (
+    <span style={{ color: "#ccc", fontSize: 12 }}>—</span>
+  )}
+</td>
                           <td style={{ padding: "12px" }}>
                             <div style={{ fontWeight: 500 }}>
                               {o.user?.name || "Guest"}
@@ -1529,10 +1281,7 @@ const hasFilters =
                               borderBottom: "0.5px solid rgba(0,0,0,.05)",
                             }}
                           >
-                            <td
-                              colSpan={10}
-                              style={{ padding: "4px 12px 16px" }}
-                            >
+                            <td colSpan={11} style={{ padding: "4px 12px 16px" }}>
                               <OrderDetail
                                 order={o}
                                 onStatusChange={(id, s) => {
