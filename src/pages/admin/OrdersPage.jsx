@@ -4,6 +4,8 @@ import {
   getAllOrders,
   getRestaurantProfile,
   updateOrderStatus,
+  updatePaymentStatus,
+  updateOrderPaymentMethod,
 } from "../../services/adminService.js";
 import { getMenu } from "../../services/menuService.js";
 import { placeOrder } from "../../services/orderService.js";
@@ -134,7 +136,7 @@ const StatPill = ({ label, value, color, sub }) => (
 );
 
 // ── OrderDetail (expand row) ──────────────────────────────────────────────────
-const OrderDetail = ({ order, onStatusChange }) => {
+const OrderDetail = ({ order, onStatusChange, onPaymentStatusChange, onPaymentMethodChange }) => {
   const subtotal = order.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0;
   // const tax = Math.round(subtotal * 0.18);
   const tax=0;
@@ -272,6 +274,7 @@ const OrderDetail = ({ order, onStatusChange }) => {
             v: order.user?.phone ? `+91 ${order.user.phone}` : "—",
           },
           { l: "Type", v: order.orderType },
+          { l: "Payment Method", v: order.paymentMethod || "—" },
           { l: "Table", v: order.tableNo ? `Table ${order.tableNo}` : "—" },
           ...(order.orderType === "Delivery"
             ? [
@@ -357,6 +360,89 @@ const OrderDetail = ({ order, onStatusChange }) => {
               })}
           </div>
         </div>
+
+        {/* Payment status + method — editable after the order was placed */}
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#aaa",
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Payment status
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {/* "Unpaid" maps to the existing "Pending" paymentStatus value —
+                there's no separate "Unpaid" value in the Order schema. */}
+            {[
+              { label: "Paid", value: "Paid" },
+              { label: "Unpaid", value: "Pending" },
+            ]
+              .filter((o) => o.value !== order.paymentStatus)
+              .map((o) => {
+                const st = PAY_STYLE[o.value] || { bg: "#f0f0f0", color: "#666" };
+                return (
+                  <button
+                    key={o.value}
+                    onClick={() => onPaymentStatusChange(order._id, o.value)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 20,
+                      border: `0.5px solid ${st.color}`,
+                      background: st.bg,
+                      color: st.color,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#aaa",
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+              marginBottom: 8,
+            }}
+          >
+            Payment method
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {["Cash", "Online"]
+              .filter((m) => m !== order.paymentMethod)
+              .map((m) => (
+                <button
+                  key={m}
+                  onClick={() => onPaymentMethodChange(order._id, m)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 20,
+                    border: "0.5px solid rgba(0,0,0,.15)",
+                    background: "#f5f5f5",
+                    color: "#555",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  {m === "Cash" ? "💵" : "💳"} {m}
+                </button>
+              ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -397,6 +483,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [cart, setCart] = useState([]);
   const [orderType, setOrderType] = useState("Dining");
+  const [paymentMethod, setPaymentMethod] = useState("Cash");
   const [tableNo, setTableNo] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -484,6 +571,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
         items: cart.map((c) => ({ menuItemId: c.item._id, qty: c.qty, notes: c.notes || "" })),
         orderType,
         tableNo: orderType === "Dining" ? Number(tableNo) : null,
+        paymentMethod,
         isGuest: true,
       });
       toast.success(`Order ${data.orderId} created!`);
@@ -662,6 +750,23 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
                     background: orderType === t ? KFC_RED : WHITE,
                     color: orderType === t ? WHITE : "#555" }}>
                     {t === "Dining" ? "🪑" : "🛍️"} {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* payment method */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: KFC_DARK, letterSpacing: 0.8,
+                textTransform: "uppercase", marginBottom: 8 }}>Payment method</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["Cash", "Online"].map((m) => (
+                  <button key={m} onClick={() => setPaymentMethod(m)} style={{ flex: 1, padding: "9px 0",
+                    borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13,
+                    border: paymentMethod === m ? `2px solid ${KFC_RED}` : "1px solid rgba(0,0,0,.15)",
+                    background: paymentMethod === m ? KFC_RED : WHITE,
+                    color: paymentMethod === m ? WHITE : "#555" }}>
+                    {m === "Cash" ? "💵" : "💳"} {m}
                   </button>
                 ))}
               </div>
@@ -863,6 +968,30 @@ const rangeStats = {
       toast.success(`→ ${newStatus}`);
     } catch {
       toast.error("Update failed");
+    }
+  };
+
+  const handlePaymentStatusChange = async (id, newPaymentStatus) => {
+    try {
+      await updatePaymentStatus(id, newPaymentStatus);
+      setOrders((prev) =>
+        prev.map((o) => (o._id === id ? { ...o, paymentStatus: newPaymentStatus } : o)),
+      );
+      toast.success(`Payment → ${newPaymentStatus === "Pending" ? "Unpaid" : newPaymentStatus}`);
+    } catch {
+      toast.error("Payment status update failed");
+    }
+  };
+
+  const handlePaymentMethodChange = async (id, newPaymentMethod) => {
+    try {
+      await updateOrderPaymentMethod(id, newPaymentMethod);
+      setOrders((prev) =>
+        prev.map((o) => (o._id === id ? { ...o, paymentMethod: newPaymentMethod } : o)),
+      );
+      toast.success(`Payment method → ${newPaymentMethod}`);
+    } catch {
+      toast.error("Payment method update failed");
     }
   };
 
@@ -1429,6 +1558,8 @@ const hasFilters =
                                   handleStatusChange(id, s);
                                   setExpanded(null);
                                 }}
+                                onPaymentStatusChange={handlePaymentStatusChange}
+                                onPaymentMethodChange={handlePaymentMethodChange}
                               />
                             </td>
                           </tr>

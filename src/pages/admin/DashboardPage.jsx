@@ -705,6 +705,18 @@ function TableMap({
                       ₹{Math.round(selectedOrder.total)}
                     </span>
                   </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 12,
+                      color: "#888",
+                      marginTop: 6,
+                    }}
+                  >
+                    <span>Payment Method</span>
+                    <span>{selectedOrder.paymentMethod || "—"}</span>
+                  </div>
                 </div>
               </div>
 
