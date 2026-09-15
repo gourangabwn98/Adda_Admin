@@ -444,6 +444,11 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
         : [...p, { item, qty: 1 }];
     });
 
+  // Free-text prep note per cart item (e.g. "no onions") — printed on the
+  // KOT (see server/models/Order.js item.notes).
+  const updateNotes = (id, notes) =>
+    setCart((p) => p.map((c) => (c.item._id === id ? { ...c, notes } : c)));
+
   const removeItem = (id) =>
     setCart((p) => {
       const ex = p.find((c) => c.item._id === id);
@@ -471,7 +476,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
     try {
       setLoading(true);
       const { data } = await placeOrder({
-        items: cart.map((c) => ({ menuItemId: c.item._id, qty: c.qty })),
+        items: cart.map((c) => ({ menuItemId: c.item._id, qty: c.qty, notes: c.notes || "" })),
         orderType,
         tableNo: orderType === "Dining" ? Number(tableNo) : null,
         isGuest: true,
@@ -693,11 +698,21 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {/* item rows */}
                   {cart.map((c) => (
-                    <div key={c.item._id} style={{ display: "flex", justifyContent: "space-between",
-                      alignItems: "center", fontSize: 13, padding: "6px 0",
-                      borderBottom: "1px dashed rgba(0,0,0,.1)" }}>
-                      <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
-                      <span style={{ fontWeight: 700 }}>₹{c.item.price * c.qty}</span>
+                    <div key={c.item._id} style={{ padding: "6px 0", borderBottom: "1px dashed rgba(0,0,0,.1)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+                        <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
+                        <span style={{ fontWeight: 700 }}>₹{c.item.price * c.qty}</span>
+                      </div>
+                      {/* Prep note — printed on the KOT */}
+                      <input
+                        value={c.notes || ""}
+                        onChange={(e) => updateNotes(c.item._id, e.target.value)}
+                        placeholder="📝 Note (e.g. no onions)…"
+                        maxLength={200}
+                        style={{ width: "100%", marginTop: 4, padding: "5px 8px", borderRadius: 6,
+                          border: "1px solid rgba(0,0,0,.1)", fontSize: 11, outline: "none",
+                          boxSizing: "border-box", background: "#fafafa" }}
+                      />
                     </div>
                   ))}
 
