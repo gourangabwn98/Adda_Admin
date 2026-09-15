@@ -146,7 +146,9 @@ const TypeBadge = ({ label }) => {
 };
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
-const StatCard = ({ label, value, sub, color, onClick, badge }) => (
+// `hidden`/`onToggleHide` are optional — only the boxes that opt in (e.g.
+// Total revenue) render the eye toggle and blur their value.
+const StatCard = ({ label, value, sub, color, onClick, badge, hidden, onToggleHide }) => (
   <div
     onClick={onClick}
     style={{
@@ -176,15 +178,35 @@ const StatCard = ({ label, value, sub, color, onClick, badge }) => (
         fontSize: 12,
         color: "var(--color-text-secondary,#888)",
         marginBottom: 5,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 6,
       }}
     >
-      {label}
+      <span>{label}</span>
+      {onToggleHide && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleHide(); }}
+          title={hidden ? "Show amount" : "Hide amount"}
+          style={{
+            border: "none", background: "none", cursor: "pointer",
+            fontSize: 13, color: "var(--color-text-tertiary,#aaa)",
+            padding: 2, lineHeight: 1,
+          }}
+        >
+          {hidden ? "🙈" : "👁️"}
+        </button>
+      )}
     </div>
     <div
       style={{
         fontSize: 22,
         fontWeight: 500,
         color: color || "var(--color-text-primary,#111)",
+        filter: hidden ? "blur(7px)" : "none",
+        userSelect: hidden ? "none" : "auto",
+        transition: "filter .15s",
       }}
     >
       {value}
@@ -1185,6 +1207,15 @@ export default function DashboardPage({ data }) {
   const [loading, setLoading] = useState(true);
   const [allOrders, setAllOrders] = useState([]); // ← NEW: full list, for all-time revenue
   const [showPendingModal, setShowPendingModal] = useState(false);
+  // Total-revenue hide/show — persisted so it stays hidden across refresh.
+  const [hideRevenue, setHideRevenue] = useState(
+    () => localStorage.getItem("adda_hideTotalRevenue") === "1",
+  );
+  const toggleHideRevenue = () =>
+    setHideRevenue((v) => {
+      localStorage.setItem("adda_hideTotalRevenue", !v ? "1" : "0");
+      return !v;
+    });
 // const [allTodayOrders, setAllTodayOrders] = useState([]);
 // const [invoiceMap, setInvoiceMap] = useState({});
 // const [loading, setLoading] = useState(true);
@@ -1329,6 +1360,8 @@ const pendingInvoices = Object.values(invoiceMap).filter(
     value: `₹${Math.round(totalRevenue).toLocaleString()}`, // ← was s.totalRevenue
     sub: "Completed & paid orders",
     color: PINK,
+    hidden: hideRevenue,
+    onToggleHide: toggleHideRevenue,
   },
   {
     label: "Total orders",
