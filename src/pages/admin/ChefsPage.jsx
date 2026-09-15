@@ -5,6 +5,7 @@ import {
   createChef,
   updateChefStatus,
   deleteChef,
+  getChefRevenue,
 } from "../../services/adminService.js";
 
 const PINK = "#e91e8c";
@@ -20,6 +21,9 @@ export default function ChefsPage() {
     status: "Active",
   });
   const [submitting, setSubmitting] = useState(false);
+  // Waiter-wise daily revenue (Cash/Online), keyed by chefId.
+  const [revenueByChef, setRevenueByChef] = useState({});
+  const [revenueDate, setRevenueDate] = useState("");
 
   const fetchChefs = useCallback(async () => {
     try {
@@ -32,9 +36,22 @@ export default function ChefsPage() {
     }
   }, []);
 
+  const fetchRevenue = useCallback(async () => {
+    try {
+      const res = await getChefRevenue();
+      const rows = res.data?.chefs || [];
+      setRevenueByChef(Object.fromEntries(rows.map((r) => [r.chefId, r])));
+      setRevenueDate(res.data?.date || "");
+    } catch {
+      // Non-fatal — the chef list itself still renders without revenue.
+      setRevenueByChef({});
+    }
+  }, []);
+
   useEffect(() => {
     fetchChefs();
-  }, [fetchChefs]);
+    fetchRevenue();
+  }, [fetchChefs, fetchRevenue]);
 
   const handleCreateChef = async () => {
     if (!newChef.name || !newChef.phone) {
@@ -104,6 +121,7 @@ export default function ChefsPage() {
           </h1>
           <p style={{ color: "#666", marginTop: 4 }}>
             Create and manage chef accounts for login
+            {revenueDate && ` · Daily revenue for ${revenueDate}`}
           </p>
         </div>
         <button
@@ -166,6 +184,36 @@ export default function ChefsPage() {
               <th
                 style={{
                   padding: "14px 16px",
+                  textAlign: "right",
+                  fontSize: 13,
+                  color: "#666",
+                }}
+              >
+                Cash Today
+              </th>
+              <th
+                style={{
+                  padding: "14px 16px",
+                  textAlign: "right",
+                  fontSize: 13,
+                  color: "#666",
+                }}
+              >
+                Online Today
+              </th>
+              <th
+                style={{
+                  padding: "14px 16px",
+                  textAlign: "right",
+                  fontSize: 13,
+                  color: "#666",
+                }}
+              >
+                Total Today
+              </th>
+              <th
+                style={{
+                  padding: "14px 16px",
                   textAlign: "center",
                   fontSize: 13,
                   color: "#666",
@@ -176,7 +224,9 @@ export default function ChefsPage() {
             </tr>
           </thead>
           <tbody>
-            {chefs.map((chef) => (
+            {chefs.map((chef) => {
+              const rev = revenueByChef[chef._id];
+              return (
               <tr key={chef._id} style={{ borderTop: "0.5px solid #eee" }}>
                 <td style={{ padding: "14px 16px", fontWeight: 500 }}>
                   {chef.name}
@@ -198,6 +248,15 @@ export default function ChefsPage() {
                   >
                     {chef.status}
                   </span>
+                </td>
+                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555" }}>
+                  ₹{Math.round(rev?.cash || 0).toLocaleString()}
+                </td>
+                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555" }}>
+                  ₹{Math.round(rev?.online || 0).toLocaleString()}
+                </td>
+                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 600, color: PINK }}>
+                  ₹{Math.round(rev?.total || 0).toLocaleString()}
                 </td>
                 <td style={{ padding: "14px 16px", textAlign: "center" }}>
                   <button
@@ -230,11 +289,12 @@ export default function ChefsPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {chefs.length === 0 && (
               <tr>
                 <td
-                  colSpan="4"
+                  colSpan="7"
                   style={{ padding: 40, textAlign: "center", color: "#aaa" }}
                 >
                   No chefs added yet
