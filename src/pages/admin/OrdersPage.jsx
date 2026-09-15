@@ -55,6 +55,7 @@ const PAY_STYLE = {
 const TYPE_STYLE = {
   Dining: { bg: "#FBEAF0", color: "#993556" },
   "Take Away": { bg: "#E6F1FB", color: "#185FA5" },
+  Delivery: { bg: "#E8F5E9", color: "#2E7D32" },
 };
 
 const STATUSES = [
@@ -211,6 +212,9 @@ const OrderDetail = ({ order, onStatusChange }) => {
   ...(order.tax > 0
     ? [{ l: `GST`, v: `₹${order.tax}` }]
     : []),
+  ...(order.deliveryFee > 0
+    ? [{ l: `Delivery Fee`, v: `₹${order.deliveryFee}` }]
+    : []),
             {/* { l: "GST (18%)", v: `₹${tax}` }, */}
           ].map((r) => (
             <div
@@ -264,6 +268,12 @@ const OrderDetail = ({ order, onStatusChange }) => {
           },
           { l: "Type", v: order.orderType },
           { l: "Table", v: order.tableNo ? `Table ${order.tableNo}` : "—" },
+          ...(order.orderType === "Delivery"
+            ? [
+                { l: "Delivery Address", v: order.deliveryAddress || "—" },
+                { l: "Delivery Phone", v: order.deliveryPhone ? `+91 ${order.deliveryPhone}` : "—" },
+              ]
+            : []),
           {
             l: "Date",
             v: new Date(order.createdAt).toLocaleString("en-IN", {

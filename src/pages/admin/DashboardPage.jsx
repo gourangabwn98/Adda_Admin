@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
+import { io } from "socket.io-client";
 import {
   getDashboard,
   updateOrderStatus,
@@ -7,7 +8,37 @@ import {
   getAllInvoices,
   updateInvoiceStatus,
   getAllTables, // ← Added for dynamic tables
+  acceptOrderRequest,
+  declineOrderRequest,
 } from "../../services/adminService.js";
+
+// Backend origin for the Socket.IO connection — VITE_API_URL points at
+// ".../api", the socket needs the bare origin.
+const SOCKET_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
+
+// Short two-tone notification beep, synthesized via Web Audio — no audio
+// asset file needed.
+const playNotifySound = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 660].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      const start = ctx.currentTime + i * 0.18;
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.16);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.18);
+    });
+  } catch {
+    // Audio not available (e.g. autoplay policy before first user
+    // interaction) — non-fatal, the visual badge/toast still shows.
+  }
+};
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const PINK = "#e91e8c";
@@ -25,6 +56,7 @@ const STATUS_STYLE = {
 const TYPE_STYLE = {
   Dining: { bg: "#FBEAF0", color: "#993556" },
   "Take Away": { bg: "#E6F1FB", color: "#185FA5" },
+  Delivery: { bg: "#E8F5E9", color: "#2E7D32" },
 };
 
 const AVATAR_COLORS = [
@@ -114,14 +146,31 @@ const TypeBadge = ({ label }) => {
 };
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
-const StatCard = ({ label, value, sub, color }) => (
+const StatCard = ({ label, value, sub, color, onClick, badge }) => (
   <div
+    onClick={onClick}
     style={{
       background: "var(--color-background-secondary,#f5f5f5)",
       borderRadius: 8,
       padding: "14px 16px",
+      position: "relative",
+      cursor: onClick ? "pointer" : "default",
+      border: onClick ? "1.5px solid rgba(211,47,47,.25)" : "1.5px solid transparent",
+      transition: "border-color .15s",
     }}
   >
+    {badge > 0 && (
+      <span
+        style={{
+          position: "absolute", top: -6, right: -6, minWidth: 20, height: 20,
+          borderRadius: 10, background: "#d32f2f", color: "#fff",
+          fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center",
+          justifyContent: "center", padding: "0 5px", boxShadow: "0 2px 6px rgba(211,47,47,.4)",
+        }}
+      >
+        {badge}
+      </span>
+    )}
     <div
       style={{
         fontSize: 12,
@@ -293,7 +342,7 @@ function TableMap({
       (o) =>
         o.orderType === "Dining" &&
         o.tableNo &&
-        !["Completed", "Cancelled"].includes(o.status),
+        !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
     )
     .forEach((o) => {
       tableOrderMap[Number(o.tableNo)] = o;
@@ -833,7 +882,7 @@ function OrderList({ orders, onStatusChange }) {
   const [type, setType] = useState("all");
 
   const activeOrders = orders.filter(
-    (o) => !["Completed", "Cancelled"].includes(o.status),
+    (o) => !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
   );
   const countDining = activeOrders.filter(
     (o) => o.orderType === "Dining",
@@ -1054,6 +1103,74 @@ function OrderList({ orders, onStatusChange }) {
   );
 }
 
+// ── PendingOrdersModal ────────────────────────────────────────────────────────
+// Shows every order awaiting admin/Waiter confirmation, with Accept/Decline.
+function PendingOrdersModal({ orders, onAccept, onDecline, onClose }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 999,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: WHITE, borderRadius: 16, width: "100%", maxWidth: 520,
+          maxHeight: "85vh", overflowY: "auto", display: "flex", flexDirection: "column" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "18px 22px", borderBottom: "0.5px solid rgba(0,0,0,.08)" }}>
+          <div style={{ fontWeight: 500, fontSize: 17 }}>
+            Awaiting confirmation {orders.length > 0 && `(${orders.length})`}
+          </div>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%",
+            border: "0.5px solid rgba(0,0,0,.15)", background: "#f5f5f5", cursor: "pointer",
+            fontSize: 16, color: "#666" }}>
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          {orders.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#bbb", fontSize: 13 }}>
+              No pending order requests right now.
+            </div>
+          ) : (
+            orders.map((o) => (
+              <div key={o._id} style={{ border: "1px solid rgba(211,47,47,.2)", borderRadius: 12,
+                padding: 14, marginBottom: 12, background: "rgba(211,47,47,.03)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>
+                      {o.orderType === "Dining" ? `Table ${o.tableNo ?? "-"}` : "Take Away"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#999", fontFamily: "monospace" }}>{o.orderId}</div>
+                  </div>
+                  <div style={{ fontWeight: 700, color: PINK }}>₹{o.total}</div>
+                </div>
+                <div style={{ fontSize: 12, color: "#555", marginBottom: 10 }}>
+                  {o.items?.map((it) => `${it.name} ×${it.qty}`).join(", ")}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => onDecline(o._id)} style={{ flex: 1, padding: "8px 0",
+                    borderRadius: 20, border: "1.5px solid #d32f2f", background: WHITE,
+                    color: "#d32f2f", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                    Decline
+                  </button>
+                  <button onClick={() => onAccept(o._id)} style={{ flex: 1, padding: "8px 0",
+                    borderRadius: 20, border: "none", background: "#1D9E75",
+                    color: WHITE, fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
+                    Accept
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── main DashboardPage ────────────────────────────────────────────────────────
 export default function DashboardPage({ data }) {
   const s = data?.stats || {};
@@ -1062,6 +1179,7 @@ export default function DashboardPage({ data }) {
   const [invoiceMap, setInvoiceMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [allOrders, setAllOrders] = useState([]); // ← NEW: full list, for all-time revenue
+  const [showPendingModal, setShowPendingModal] = useState(false);
 // const [allTodayOrders, setAllTodayOrders] = useState([]);
 // const [invoiceMap, setInvoiceMap] = useState({});
 // const [loading, setLoading] = useState(true);
@@ -1081,7 +1199,7 @@ const fetchData = useCallback(async () => {
       (o) =>
         o.orderType === "Dining" &&
         o.tableNo &&
-        !["Completed", "Cancelled"].includes(o.status),
+        !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
     );
     const iMap = {};
     invoices.forEach((inv) => {
@@ -1112,6 +1230,49 @@ const fetchData = useCallback(async () => {
     const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // Real-time: play a sound and refresh the instant a customer places (or
+  // cancels) a pending order, instead of waiting for the next 10s poll.
+  useEffect(() => {
+    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+
+    socket.on("order-request", (order) => {
+      playNotifySound();
+      toast(`New order request — Table ${order.tableNo ?? "-"} (${order.orderId})`, { icon: "🔔" });
+      fetchData();
+    });
+    socket.on("order-status-updated", () => {
+      fetchData();
+    });
+
+    return () => socket.disconnect();
+  }, [fetchData]);
+
+  // Orders awaiting admin/Waiter confirmation (either app can accept/decline
+  // — first response wins; see server orderController.acceptOrder).
+  const pendingOrders = allOrders.filter((o) => o.status === "PendingConfirmation");
+
+  const handleAccept = async (orderId) => {
+    try {
+      await acceptOrderRequest(orderId);
+      toast.success("Order accepted");
+      await fetchData();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to accept order");
+    }
+  };
+
+  const handleDecline = async (orderId) => {
+    const reason = window.prompt("Reason for declining (optional):", "");
+    if (reason === null) return; // cancelled the prompt
+    try {
+      await declineOrderRequest(orderId, reason);
+      toast.success("Order declined");
+      await fetchData();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to decline order");
+    }
+  };
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
@@ -1189,13 +1350,12 @@ const pendingInvoices = Object.values(invoiceMap).filter(
     color: PINK,
   },
   {
-    label: "Avg order value",
-    value: `₹${
-      completedPaidToday.length
-        ? Math.round(todayRevenue / completedPaidToday.length)
-        : 0
-    }`, // ← was averaging over ALL today's orders regardless of status/payment
-    sub: "Today",
+    label: "Awaiting confirmation",
+    value: pendingOrders.length,
+    sub: pendingOrders.length ? "Tap to review" : "No pending requests",
+    color: pendingOrders.length ? "#d32f2f" : undefined,
+    badge: pendingOrders.length,
+    onClick: () => setShowPendingModal(true),
   },
   {
     label: "Active tables",
@@ -1203,7 +1363,7 @@ const pendingInvoices = Object.values(invoiceMap).filter(
       (o) =>
         o.orderType === "Dining" &&
         o.tableNo &&
-        !["Completed", "Cancelled"].includes(o.status),
+        !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
     ).length}`,
     sub: "Dining now",
   },
@@ -1341,6 +1501,15 @@ const pendingInvoices = Object.values(invoiceMap).filter(
             />
           </Card>
         </div>
+      )}
+
+      {showPendingModal && (
+        <PendingOrdersModal
+          orders={pendingOrders}
+          onAccept={handleAccept}
+          onDecline={handleDecline}
+          onClose={() => setShowPendingModal(false)}
+        />
       )}
     </>
   );
