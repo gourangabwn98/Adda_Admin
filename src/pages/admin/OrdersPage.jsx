@@ -168,33 +168,38 @@ const OrderDetail = ({ order, onStatusChange }) => {
           <div
             key={i}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
               padding: "7px 0",
               borderBottom: "0.5px solid rgba(0,0,0,.06)",
               fontSize: 13,
             }}
           >
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  background: "#f5f5f5",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: PINK,
-                }}
-              >
-                {item.qty}
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    background: "#f5f5f5",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: PINK,
+                  }}
+                >
+                  {item.qty}
+                </div>
+                <span>{item.name}</span>
               </div>
-              <span>{item.name}</span>
+              <span style={{ fontWeight: 500 }}>₹{item.price * item.qty}</span>
             </div>
-            <span style={{ fontWeight: 500 }}>₹{item.price * item.qty}</span>
+            {item.notes && (
+              <div style={{ fontSize: 11, color: "#999", marginTop: 3, marginLeft: 34 }}>
+                ↳ {item.notes}
+              </div>
+            )}
           </div>
         ))}
         <div
