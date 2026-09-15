@@ -43,6 +43,10 @@ export const regenerateQR = (tableNo) =>
 //for chef
 
 export const getAllChefs = () => api.get("admin/chefs");
+// Waiter-wise daily revenue (Cash/Online), grouped by Chef — see
+// server/controllers/chefController.js getChefRevenue. `params` may include
+// `date` (YYYY-MM-DD, defaults to today) and/or `chefId` (scope to one).
+export const getChefRevenue = (params) => api.get("admin/chefs/revenue", { params });
 export const createChef = (data) => api.post("admin/chefs", data);
 export const updateChefStatus = (id, status) =>
   api.patch(`admin/chefs/${id}/status`, { status });
