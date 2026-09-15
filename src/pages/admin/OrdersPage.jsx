@@ -12,6 +12,33 @@ import { placeOrder } from "../../services/orderService.js";
 const PINK = "#e91e8c";
 const WHITE = "#fff";
 
+// ── CreateOrderModal responsive layout ──────────────────────────────────────
+// The modal's menu-picker/order-summary area is a fixed "1fr 340px" grid.
+// Below ~760px that fixed 340px column leaves the menu-picker column too
+// little room, squeezing the search box, category filter, and item cards
+// together (looking like the category filter "disappears"/overlaps the
+// search bar). This breakpoint stacks the two columns instead. Uses the same
+// "inject a <style> tag once" pattern already used elsewhere in this app
+// (see ProfilePage.jsx) since inline styles can't express media queries.
+if (!document.getElementById("create-order-modal-styles")) {
+  const s = document.createElement("style");
+  s.id = "create-order-modal-styles";
+  s.textContent = `
+    .com-grid { display: grid; grid-template-columns: 1fr 340px; }
+    @media (max-width: 760px) {
+      .com-grid { grid-template-columns: 1fr; }
+      .com-left-panel { border-right: none !important; border-bottom: 1px solid rgba(0,0,0,.08); }
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+// Parcel / Water / Gas items are exempt from service charge (matches
+// server/utils/serviceCharge.js).
+const SERVICE_CHARGE_EXEMPT_CATEGORIES = ["parcel", "water", "gas"];
+const isServiceChargeExempt = (category) =>
+  SERVICE_CHARGE_EXEMPT_CATEGORIES.includes(String(category || "").trim().toLowerCase());
+
 const STATUS_STYLE = {
   Placed: { bg: "#E6F1FB", color: "#185FA5" },
   Preparing: { bg: "#FAEEDA", color: "#854F0B" },
@@ -28,6 +55,7 @@ const PAY_STYLE = {
 const TYPE_STYLE = {
   Dining: { bg: "#FBEAF0", color: "#993556" },
   "Take Away": { bg: "#E6F1FB", color: "#185FA5" },
+  Delivery: { bg: "#E8F5E9", color: "#2E7D32" },
 };
 
 const STATUSES = [
@@ -184,6 +212,9 @@ const OrderDetail = ({ order, onStatusChange }) => {
   ...(order.tax > 0
     ? [{ l: `GST`, v: `₹${order.tax}` }]
     : []),
+  ...(order.deliveryFee > 0
+    ? [{ l: `Delivery Fee`, v: `₹${order.deliveryFee}` }]
+    : []),
             {/* { l: "GST (18%)", v: `₹${tax}` }, */}
           ].map((r) => (
             <div
@@ -237,6 +268,12 @@ const OrderDetail = ({ order, onStatusChange }) => {
           },
           { l: "Type", v: order.orderType },
           { l: "Table", v: order.tableNo ? `Table ${order.tableNo}` : "—" },
+          ...(order.orderType === "Delivery"
+            ? [
+                { l: "Delivery Address", v: order.deliveryAddress || "—" },
+                { l: "Delivery Phone", v: order.deliveryPhone ? `+91 ${order.deliveryPhone}` : "—" },
+              ]
+            : []),
           {
             l: "Date",
             v: new Date(order.createdAt).toLocaleString("en-IN", {
@@ -326,14 +363,14 @@ const OrderDetail = ({ order, onStatusChange }) => {
 
 const isUrl = (s) => typeof s === "string" && s.startsWith("http");
 
-const ItemImage = ({ src, name }) =>
+const ItemImage = ({ src, name, size = 40 }) =>
   isUrl(src) ? (
     <img
       src={src}
       alt={name}
       style={{
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         borderRadius: 8,
         objectFit: "cover",
         flexShrink: 0,
@@ -344,7 +381,7 @@ const ItemImage = ({ src, name }) =>
       }}
     />
   ) : (
-    <span style={{ fontSize: 24, flexShrink: 0, lineHeight: 1 }}>
+    <span style={{ fontSize: Math.round(size * 0.6), flexShrink: 0, lineHeight: 1 }}>
       {src || "🍽️"}
     </span>
   );
@@ -352,6 +389,7 @@ const ItemImage = ({ src, name }) =>
 const CreateOrderModal = ({ onClose, onCreated }) => {
   const [menuItems, setMenuItems] = useState([]);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
   const [cart, setCart] = useState([]);
   const [orderType, setOrderType] = useState("Dining");
   const [tableNo, setTableNo] = useState("");
@@ -376,8 +414,24 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
       .catch(() => {});
   }, []);
 
-  const filtered = menuItems.filter((m) =>
-    m.name.toLowerCase().includes(search.toLowerCase())
+  // Trim category strings before dedup/compare — the backend `category` field
+  // has no `trim: true` (server/models/MenuItem.js), so a stray
+  // leading/trailing space would otherwise create a duplicate chip that
+  // never matches on `===`, breaking that category's filter.
+  const categories = [
+    "All",
+    ...new Set(
+      menuItems
+        .map((m) => (typeof m.category === "string" ? m.category.trim() : ""))
+        .filter(Boolean)
+    ),
+  ];
+
+  const filtered = menuItems.filter(
+    (m) =>
+      m.name.toLowerCase().includes(search.toLowerCase()) &&
+      (categoryFilter === "All" ||
+        (typeof m.category === "string" ? m.category.trim() : "") === categoryFilter)
   );
 
   const getQty = (id) => cart.find((c) => c.item._id === id)?.qty || 0;
@@ -400,9 +454,13 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
     });
 
   const subtotal         = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
-  const totalQty         = cart.reduce((s, c) => s + c.qty, 0);
   const tax              = Math.round(subtotal * (gstRate / 100));
-  const serviceChargeAmt = serviceChargePerItem * totalQty;
+  // Parcel / Water / Gas items are exempt from service charge (matches
+  // server/utils/serviceCharge.js).
+  const chargeableQty    = cart
+    .filter((c) => !isServiceChargeExempt(c.item.category))
+    .reduce((s, c) => s + c.qty, 0);
+  const serviceChargeAmt = serviceChargePerItem * chargeableQty;
   // const discount         = subtotal > 400 ? 10 : 0;
   const total            = subtotal + tax + serviceChargeAmt;
 
@@ -430,82 +488,143 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 
   const inp = {
     padding: "9px 12px", borderRadius: 8,
-    border: "0.5px solid rgba(0,0,0,.15)", fontSize: 13,
+    border: "1px solid rgba(0,0,0,.15)", fontSize: 13,
     outline: "none", background: WHITE, width: "100%", boxSizing: "border-box",
   };
 
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 999,
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div style={{ background: WHITE, borderRadius: 16, width: "100%", maxWidth: 760,
-        maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
+  // ── KFC-style palette — scoped to this modal only; the rest of the page
+  // keeps using the shared PINK/WHITE constants above, untouched. ──────────
+  const KFC_RED   = "#c8102e";
+  const KFC_DARK  = "#1e1e1e";
+  const KFC_CREAM = "#fff8ef";
 
-        {/* header */}
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 999,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: KFC_CREAM, borderRadius: 18, width: "100%", maxWidth: 960,
+        maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column",
+        boxShadow: "0 24px 60px rgba(0,0,0,.35)" }}>
+
+        {/* header — bold red banner */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "18px 22px", borderBottom: "0.5px solid rgba(0,0,0,.08)" }}>
+          padding: "18px 22px", background: KFC_RED, borderRadius: "18px 18px 0 0" }}>
           <div>
-            <div style={{ fontWeight: 500, fontSize: 17 }}>Create new order</div>
-            <div style={{ fontSize: 12, color: "#888", marginTop: 2 }}>Walk-in or manual order entry</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: WHITE, letterSpacing: 0.4,
+              textTransform: "uppercase" }}>🍗 Create New Order</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", marginTop: 2 }}>
+              Walk-in or manual order entry
+            </div>
           </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: "50%",
-            border: "0.5px solid rgba(0,0,0,.15)", background: "#f5f5f5", cursor: "pointer",
-            fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%",
+            border: "none", background: "rgba(255,255,255,.2)", cursor: "pointer",
+            fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+            color: WHITE, fontWeight: 700 }}>
             ✕
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", flex: 1, overflow: "hidden" }}>
+        <div className="com-grid" style={{ flex: 1, overflow: "hidden" }}>
 
           {/* LEFT: menu picker */}
-          <div style={{ padding: "16px 20px", borderRight: "0.5px solid rgba(0,0,0,.08)",
+          <div className="com-left-panel" style={{ padding: "16px 20px", borderRight: "1px solid rgba(0,0,0,.06)",
             display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
-            <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5, textTransform: "uppercase" }}>
-              Select items
+
+            {/* Sticky search + category filter bar — stays pinned at the top
+                of this scrolling panel instead of scrolling away with the
+                item grid when the menu list is long. The negative margin
+                cancels the parent's `gap` so this bar's own background
+                covers that gap too (otherwise scrolled items would peek
+                through the gap right below it). */}
+            <div style={{
+              position: "sticky", top: 0, zIndex: 2, background: KFC_CREAM,
+              display: "flex", flexDirection: "column", gap: 12,
+              paddingBottom: 12, marginBottom: -12,
+              borderBottom: "1px solid rgba(0,0,0,.06)",
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: KFC_DARK, letterSpacing: 0.8,
+                textTransform: "uppercase" }}>
+                Select items
+              </div>
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search menu items…" style={inp} />
+
+              {/* category filter — horizontally scrollable so it never wraps
+                  or overflows the modal, at any width */}
+              <div style={{
+                display: "flex", flexWrap: "nowrap", gap: 8,
+                overflowX: "auto", WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none", paddingBottom: 2,
+              }}>
+                {categories.map((c) => (
+                  <button key={c} onClick={() => setCategoryFilter(c)} style={{
+                    padding: "6px 16px", borderRadius: 20, cursor: "pointer",
+                    fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
+                    textTransform: "uppercase", letterSpacing: 0.3,
+                    border: categoryFilter === c ? `2px solid ${KFC_RED}` : "1px solid rgba(0,0,0,.15)",
+                    background: categoryFilter === c ? KFC_RED : WHITE,
+                    color: categoryFilter === c ? WHITE : "#555",
+                    boxShadow: categoryFilter === c ? "0 3px 10px rgba(200,16,46,.35)" : "none",
+                  }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
             </div>
-            <input value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search menu items…" style={inp} />
 
             {menuLoading ? (
               <div style={{ textAlign: "center", padding: 32, color: "#aaa" }}>Loading menu…</div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: 12 }}>
                 {filtered.length === 0 && (
-                  <div style={{ textAlign: "center", padding: 24, color: "#bbb", fontSize: 13 }}>
+                  <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 24,
+                    color: "#bbb", fontSize: 13 }}>
                     No items found
                   </div>
                 )}
                 {filtered.map((m) => {
                   const qty = getQty(m._id);
                   return (
-                    <div key={m._id} style={{ display: "flex", alignItems: "center", gap: 12,
-                      padding: "10px 12px", borderRadius: 10,
-                      border: qty > 0 ? "0.5px solid rgba(233,30,140,.25)" : "0.5px solid rgba(0,0,0,.08)",
-                      background: qty > 0 ? "rgba(233,30,140,.04)" : WHITE }}>
-                      <ItemImage src={m.image} name={m.name} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 13 }}>{m.name}</div>
-                        <div style={{ fontSize: 11, color: "#aaa" }}>{m.category}</div>
+                    <div key={m._id} style={{ display: "flex", flexDirection: "column", gap: 6,
+                      padding: 10, borderRadius: 14, background: WHITE,
+                      border: qty > 0 ? `2px solid ${KFC_RED}` : "1px solid rgba(0,0,0,.08)",
+                      boxShadow: qty > 0 ? "0 6px 16px rgba(200,16,46,.18)" : "0 1px 4px rgba(0,0,0,.04)",
+                      transition: "box-shadow .15s, border-color .15s" }}>
+                      <div style={{ width: "100%", aspectRatio: "1", borderRadius: 10,
+                        background: "#f6efe6", display: "flex", alignItems: "center",
+                        justifyContent: "center", overflow: "hidden" }}>
+                        <ItemImage src={m.image} name={m.name} size={64} />
                       </div>
-                      <div style={{ fontWeight: 500, color: PINK, minWidth: 44, textAlign: "right" }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.25, minHeight: 33,
+                        color: KFC_DARK }}>
+                        {m.name}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase",
+                        letterSpacing: 0.4 }}>
+                        {m.category}
+                      </div>
+                      <div style={{ fontWeight: 800, color: KFC_RED, fontSize: 15 }}>
                         ₹{m.price}
                       </div>
                       {qty === 0 ? (
-                        <button onClick={() => addItem(m)} style={{ padding: "5px 14px",
-                          borderRadius: 20, background: PINK, color: WHITE, border: "none",
-                          cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
+                        <button onClick={() => addItem(m)} style={{ width: "100%", padding: "8px 0",
+                          borderRadius: 20, background: KFC_RED, color: WHITE, border: "none",
+                          cursor: "pointer", fontSize: 12, fontWeight: 800, letterSpacing: 0.6,
+                          textTransform: "uppercase" }}>
                           Add
                         </button>
                       ) : (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                          background: KFC_DARK, borderRadius: 20, padding: "4px 6px" }}>
                           <button onClick={() => removeItem(m._id)} style={{ width: 26, height: 26,
-                            borderRadius: "50%", border: `1.5px solid ${PINK}`, background: WHITE,
-                            color: PINK, cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
+                            borderRadius: "50%", border: "none", background: WHITE,
+                            color: KFC_DARK, cursor: "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
                             −
                           </button>
-                          <span style={{ fontWeight: 700, minWidth: 18, textAlign: "center" }}>{qty}</span>
+                          <span style={{ fontWeight: 800, color: WHITE, fontSize: 14 }}>{qty}</span>
                           <button onClick={() => addItem(m)} style={{ width: 26, height: 26,
-                            borderRadius: "50%", background: PINK, color: WHITE, border: "none",
-                            cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
+                            borderRadius: "50%", background: KFC_RED, color: WHITE, border: "none",
+                            cursor: "pointer", fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
                             +
                           </button>
                         </div>
@@ -518,20 +637,20 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
           </div>
 
           {/* RIGHT: summary + details */}
-          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column",
-            gap: 14, overflowY: "auto" }}>
+          <div style={{ background: WHITE, padding: "16px 20px", display: "flex",
+            flexDirection: "column", gap: 14, overflowY: "auto" }}>
 
             {/* order type */}
             <div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+              <div style={{ fontSize: 11, fontWeight: 700, color: KFC_DARK, letterSpacing: 0.8,
                 textTransform: "uppercase", marginBottom: 8 }}>Order type</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {["Dining", "Take Away"].map((t) => (
                   <button key={t} onClick={() => setOrderType(t)} style={{ flex: 1, padding: "9px 0",
-                    borderRadius: 8, cursor: "pointer", fontWeight: 500, fontSize: 13,
-                    border: orderType === t ? `2px solid ${PINK}` : "0.5px solid rgba(0,0,0,.15)",
-                    background: orderType === t ? "#fbeaf0" : WHITE,
-                    color: orderType === t ? PINK : "#555" }}>
+                    borderRadius: 8, cursor: "pointer", fontWeight: 700, fontSize: 13,
+                    border: orderType === t ? `2px solid ${KFC_RED}` : "1px solid rgba(0,0,0,.15)",
+                    background: orderType === t ? KFC_RED : WHITE,
+                    color: orderType === t ? WHITE : "#555" }}>
                     {t === "Dining" ? "🪑" : "🛍️"} {t}
                   </button>
                 ))}
@@ -541,7 +660,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
             {/* table number */}
             {orderType === "Dining" && (
               <div>
-                <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+                <div style={{ fontSize: 11, fontWeight: 700, color: KFC_DARK, letterSpacing: 0.8,
                   textTransform: "uppercase", marginBottom: 8 }}>Table number</div>
                 <input type="number" min={1} value={tableNo}
                   onChange={(e) => setTableNo(e.target.value)} placeholder="e.g. 3" style={inp} />
@@ -550,7 +669,7 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 
             {/* optional customer */}
             <div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
+              <div style={{ fontSize: 11, fontWeight: 700, color: KFC_DARK, letterSpacing: 0.8,
                 textTransform: "uppercase", marginBottom: 8 }}>Customer (optional)</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
@@ -562,23 +681,23 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
             </div>
 
             {/* cart summary */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "#aaa", letterSpacing: 0.5,
-                textTransform: "uppercase", marginBottom: 8 }}>Order summary</div>
+            <div style={{ background: KFC_CREAM, borderRadius: 14, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: KFC_DARK, letterSpacing: 0.8,
+                textTransform: "uppercase", marginBottom: 8 }}>🧾 Your order</div>
 
               {cart.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "20px 0", color: "#ccc", fontSize: 13 }}>
                   No items added yet
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {/* item rows */}
                   {cart.map((c) => (
                     <div key={c.item._id} style={{ display: "flex", justifyContent: "space-between",
                       alignItems: "center", fontSize: 13, padding: "6px 0",
-                      borderBottom: "0.5px solid rgba(0,0,0,.06)" }}>
+                      borderBottom: "1px dashed rgba(0,0,0,.1)" }}>
                       <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
-                      <span style={{ fontWeight: 500 }}>₹{c.item.price * c.qty}</span>
+                      <span style={{ fontWeight: 700 }}>₹{c.item.price * c.qty}</span>
                     </div>
                   ))}
 
@@ -590,12 +709,12 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
                       : []),
                     ...(serviceChargeAmt > 0
                       ? [{
-                          l: `Service Charge (₹${serviceChargePerItem} × ${totalQty} item${totalQty !== 1 ? "s" : ""})`,
+                          l: `Service Charge (₹${serviceChargePerItem} × ${chargeableQty} item${chargeableQty !== 1 ? "s" : ""})`,
                           v: `₹${serviceChargeAmt}`,
                           c: "#888",
                         }]
                       : []),
-                    
+
                   ].map((r) => (
                     <div key={r.l} style={{ fontSize: 12, color: r.c,
                       display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
@@ -605,18 +724,18 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
                   ))}
 
                   {/* grand total */}
-                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 500,
-                    fontSize: 15, borderTop: "0.5px solid rgba(0,0,0,.08)", paddingTop: 8, marginTop: 4 }}>
-                    <span>Total</span>
-                    <span style={{ color: PINK }}>₹{total}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800,
+                    fontSize: 16, borderTop: `2px solid ${KFC_RED}`, paddingTop: 8, marginTop: 4 }}>
+                    <span style={{ color: KFC_DARK }}>Total</span>
+                    <span style={{ color: KFC_RED }}>₹{total}</span>
                   </div>
 
                   {/* ── charge info pill ── */}
                   {(serviceChargeAmt > 0 || tax > 0) && (
-                    <div style={{ fontSize: 11, color: "#aaa", background: "#f8f8f8",
+                    <div style={{ fontSize: 11, color: "#aaa", background: WHITE,
                       borderRadius: 8, padding: "6px 10px", marginTop: 4, lineHeight: 1.5 }}>
                       {serviceChargeAmt > 0 && (
-                        <div>⚡ ₹{serviceChargePerItem}/item × {totalQty} = ₹{serviceChargeAmt} service charge</div>
+                        <div>⚡ ₹{serviceChargePerItem}/item × {chargeableQty} = ₹{serviceChargeAmt} service charge</div>
                       )}
                       {tax > 0 && (
                         <div>🧾 {gstRate}% GST = ₹{tax}</div>
@@ -629,9 +748,11 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 
             {/* submit */}
             <button onClick={handleSubmit} disabled={loading || cart.length === 0}
-              style={{ width: "100%", padding: "13px 0", borderRadius: 25, border: "none",
-                background: loading || cart.length === 0 ? "#ccc" : PINK, color: WHITE,
-                fontWeight: 700, fontSize: 14, marginTop: "auto",
+              style={{ width: "100%", padding: "15px 0", borderRadius: 28, border: "none",
+                background: loading || cart.length === 0 ? "#ccc" : KFC_RED, color: WHITE,
+                fontWeight: 800, fontSize: 15, marginTop: "auto", letterSpacing: 0.4,
+                textTransform: "uppercase", boxShadow: loading || cart.length === 0
+                  ? "none" : "0 8px 20px rgba(200,16,46,.4)",
                 cursor: loading || cart.length === 0 ? "not-allowed" : "pointer" }}>
               {loading ? "Placing order…" : `Place Order · ₹${total}`}
             </button>

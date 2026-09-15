@@ -1164,7 +1164,7 @@ export default function TablesPage() {
           (o) =>
             o.orderType === "Dining" &&
             o.tableNo &&
-            !["Completed", "Cancelled"].includes(o.status),
+            !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
         )
         .forEach((o) => {
           oMap[Number(o.tableNo)] = o;
