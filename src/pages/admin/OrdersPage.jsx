@@ -573,6 +573,9 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
         tableNo: orderType === "Dining" ? Number(tableNo) : null,
         paymentMethod,
         isGuest: true,
+        // Admin placed this directly — skips the "awaiting confirmation"
+        // step (see server/controllers/orderController.js placeOrder).
+        orderSource: "admin",
       });
       toast.success(`Order ${data.orderId} created!`);
       onCreated(data);
