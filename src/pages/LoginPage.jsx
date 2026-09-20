@@ -273,8 +273,14 @@ export default function LoginPage() {
     // ← NEW: surface the "not authorized" message from checkAdminPhone
     if (e.response?.status === 403) {
       toast.error(e.response.data?.message || "You are not authorized to access the admin panel");
+    } else if (e.code === "auth/network-request-failed") {
+      toast.error("Network error reaching Firebase. Check your internet connection, disable any ad blocker/VPN, and try again.");
     } else if (e.code === "auth/too-many-requests") {
       toast.error("Too many attempts. Please wait.");
+    } else if (e.code === "auth/invalid-phone-number") {
+      toast.error("Invalid phone number. Check the number and try again.");
+    } else if (e.code === "auth/captcha-check-failed") {
+      toast.error("reCAPTCHA verification failed. Please refresh the page and try again.");
     } else {
       toast.error("Failed to send OTP. Try again.");
     }
