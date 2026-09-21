@@ -2,6 +2,9 @@
 import api from "./api.js";
 export const getDashboard = () => api.get("/admin/dashboard");
 export const getAllOrders = (params) => api.get("/admin/orders", { params });
+// Aggregated totals (stat pills, per-status counts, date-range pill) for the
+// Orders page — computed in the database instead of by fetching every order.
+export const getOrdersSummary = (params) => api.get("/admin/orders/summary", { params });
 export const updateOrderStatus = (id, status) =>
   api.put(`/admin/orders/${id}/status`, { status });
 // "Unpaid" in the UI maps to the existing "Pending" paymentStatus value —
@@ -17,7 +20,7 @@ export const declineOrderRequest = (id, reason) =>
 export const getAllUsers = (params) => api.get("/admin/users", { params });
 export const deleteUser = (id) => api.delete(`/admin/users/${id}`);
 // src/services/adminService.js
-export const getAllInvoices = () => api.get("admin/invoices/all");
+export const getAllInvoices = (params) => api.get("admin/invoices/all", { params });
 export const updateInvoiceStatus = (id, status) =>
   api.patch(`/admin/invoices/${id}/status`, { status });
 

@@ -83,14 +83,11 @@ if (!document.getElementById("dash-blink-style")) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-const isToday = (d) => {
-  const dt = new Date(d),
-    n = new Date();
-  return (
-    dt.getFullYear() === n.getFullYear() &&
-    dt.getMonth() === n.getMonth() &&
-    dt.getDate() === n.getDate()
-  );
+// Local calendar date as "YYYY-MM-DD" — same format the Orders page's date
+// pickers already send as startDate/endDate (see adminController.buildOrderFilter).
+const todayStr = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
 };
 
 const initials = (n) =>
@@ -1212,12 +1209,18 @@ function PendingOrdersModal({ orders, onAccept, onDecline, onClose }) {
 
 // ── main DashboardPage ────────────────────────────────────────────────────────
 export default function DashboardPage({ data }) {
-  const s = data?.stats || {};
 
   const [allTodayOrders, setAllTodayOrders] = useState([]);
   const [invoiceMap, setInvoiceMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [allOrders, setAllOrders] = useState([]); // ← NEW: full list, for all-time revenue
+  // Global stats (Total revenue, Total orders, etc.) — computed in the
+  // database by getDashboardStats and refreshed on the same poll/socket
+  // triggers as the live view below, instead of being derived by fetching
+  // up to 1,000 historical orders and summing them in the browser.
+  const [stats, setStats] = useState(data?.stats || {});
+  // Orders awaiting admin/Waiter confirmation — fetched directly by status
+  // (a small, transient set) instead of filtered out of a large order list.
+  const [pendingOrders, setPendingOrders] = useState([]);
   const [showPendingModal, setShowPendingModal] = useState(false);
   // Total-revenue hide/show — persisted so it stays hidden across refresh.
   const [hideRevenue, setHideRevenue] = useState(
@@ -1228,19 +1231,20 @@ export default function DashboardPage({ data }) {
       localStorage.setItem("adda_hideTotalRevenue", !v ? "1" : "0");
       return !v;
     });
-// const [allTodayOrders, setAllTodayOrders] = useState([]);
-// const [invoiceMap, setInvoiceMap] = useState({});
-// const [loading, setLoading] = useState(true);
 
 const fetchData = useCallback(async () => {
   try {
-    const [ordersRes, invoicesRes] = await Promise.all([
-      getAllOrders({ limit: 1000 }), // ← raised from 100, so Total revenue isn't undercounted
-      getAllInvoices().catch(() => ({ data: { invoices: [] } })),
+    const today = todayStr();
+    const [dashRes, ordersRes, invoicesRes, pendingRes] = await Promise.all([
+      getDashboard(),
+      // Only today's orders — previously fetched up to 1,000 historical
+      // orders and threw away everything but today's in the browser.
+      getAllOrders({ startDate: today, endDate: today, limit: 500 }),
+      getAllInvoices({ startDate: today, endDate: today }).catch(() => ({ data: { invoices: [] } })),
+      getAllOrders({ status: "PendingConfirmation", limit: 100 }),
     ]);
 
-    const fullOrders = ordersRes.data.orders || [];               // ← NEW: everything fetched
-    const todayOrders = fullOrders.filter((o) => isToday(o.createdAt));
+    const todayOrders = ordersRes.data.orders || [];
     const invoices = invoicesRes.data?.invoices || [];
 
     const activedining = todayOrders.filter(
@@ -1263,9 +1267,10 @@ const fetchData = useCallback(async () => {
       }
     });
 
-    setAllOrders(fullOrders);       // ← NEW
+    setStats(dashRes.data?.stats || {});
     setAllTodayOrders(todayOrders);
     setInvoiceMap(iMap);
+    setPendingOrders(pendingRes.data?.orders || []);
   } catch {
     toast.error("Failed to load today's data");
   } finally {
@@ -1296,9 +1301,9 @@ const fetchData = useCallback(async () => {
     return () => socket.disconnect();
   }, [fetchData]);
 
-  // Orders awaiting admin/Waiter confirmation (either app can accept/decline
-  // — first response wins; see server orderController.acceptOrder).
-  const pendingOrders = allOrders.filter((o) => o.status === "PendingConfirmation");
+  // pendingOrders (awaiting admin/Waiter confirmation — either app can
+  // accept/decline, first response wins; see server orderController.acceptOrder)
+  // now comes straight from fetchData's dedicated status=PendingConfirmation fetch.
 
   const handleAccept = async (orderId) => {
     try {
@@ -1344,23 +1349,10 @@ const fetchData = useCallback(async () => {
     }
   };
 
-// ── Total revenue — Completed + Paid, all orders fetched ──
-const completedPaidAll = allOrders.filter(
-  (o) => o.status === "Completed" && o.paymentStatus === "Paid",
-);
-const totalRevenue = completedPaidAll.reduce(
-  (sum, o) => sum + Number(o.total || 0),
-  0,
-);
-
-// ── Today's revenue — Completed + Paid, today only ──
-const completedPaidToday = allTodayOrders.filter(
-  (o) => o.status === "Completed" && o.paymentStatus === "Paid",
-);
-const todayRevenue = completedPaidToday.reduce(
-  (sum, o) => sum + Number(o.total || 0),
-  0,
-);
+// ── Total / today revenue — Completed + Paid — now computed by
+// getDashboardStats via DB aggregation (stats.completedRevenue /
+// stats.completedTodayRevenue) instead of summing a fetched order list.
+const s = stats;
 
 const pendingInvoices = Object.values(invoiceMap).filter(
   (i) => i.invoiceStatus?.toLowerCase() === "pending",
@@ -1369,7 +1361,7 @@ const pendingInvoices = Object.values(invoiceMap).filter(
  const statBoxes = [
   {
     label: "Total revenue",
-    value: `₹${Math.round(totalRevenue).toLocaleString()}`, // ← was s.totalRevenue
+    value: `₹${Math.round(s.completedRevenue || 0).toLocaleString()}`,
     sub: "Completed & paid orders",
     color: PINK,
     hidden: hideRevenue,
@@ -1377,7 +1369,7 @@ const pendingInvoices = Object.values(invoiceMap).filter(
   },
   {
     label: "Total orders",
-    value: s.totalOrders || allOrders.length,
+    value: s.totalOrders || 0,
     sub: `+${allTodayOrders.length} today`,
     color: "#1D9E75",
   },
@@ -1395,8 +1387,8 @@ const pendingInvoices = Object.values(invoiceMap).filter(
   },
   {
     label: "Today's revenue",
-    value: `₹${Math.round(todayRevenue).toLocaleString()}`,
-    sub: `${completedPaidToday.length} orders`, // ← was allTodayOrders.length (overcounted)
+    value: `₹${Math.round(s.completedTodayRevenue || 0).toLocaleString()}`,
+    sub: `${s.completedTodayCount || 0} orders`,
     color: PINK,
   },
   {

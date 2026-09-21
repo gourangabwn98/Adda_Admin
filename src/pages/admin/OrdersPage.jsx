@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
 import {
   getAllOrders,
+  getOrdersSummary,
   getRestaurantProfile,
   updateOrderStatus,
   updatePaymentStatus,
@@ -905,62 +906,74 @@ export default function OrdersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
-  // const [dateF, setDateF] = useState("");  // e.g. "2025-06-27"
   const [startDate, setStartDate] = useState(""); // e.g. "2025-06-01"
-const [endDate, setEndDate] = useState(""); 
+  const [endDate, setEndDate] = useState("");
+  const [totalCount, setTotalCount] = useState(0);
+  const [summary, setSummary] = useState({
+    total: 0, today: 0, revenue: 0, pending: 0, byStatus: {}, rangeCount: 0, rangeAmount: 0,
+  });
 
+  // Debounce the search box so typing doesn't fire a request per keystroke —
+  // the filtering itself now happens server-side (see fetchOrders below).
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    // Page reset lives in this same timeout (not a separate effect) so it
+    // fires once the search term actually settles, not on every keystroke —
+    // every other filter below already resets the page inline in its own
+    // onChange handler.
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Server-side pagination + filtering — previously this fetched up to
+  // 10,000 full order documents and filtered/paginated them all in the
+  // browser on every load. Now only the current page's rows are fetched.
   const fetchOrders = useCallback(() => {
-    getAllOrders({ limit: 10000 })
-    
+    getAllOrders({
+      page,
+      limit: PER_PAGE,
+      status: filter !== "All" ? filter : undefined,
+      orderType: typeF !== "All" ? typeF : undefined,
+      paymentStatus: payF !== "All" ? payF : undefined,
+      search: debouncedSearch || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    })
       .then((r) => {
         setOrders(r.data?.orders || []);
+        setTotalCount(r.data?.total || 0);
         setLoading(false);
       })
       .catch(() => {
         toast.error("Failed to load orders");
         setLoading(false);
       });
-  }, []);
+  }, [page, filter, typeF, payF, debouncedSearch, startDate, endDate]);
+
+  // Stat pills / per-status chip counts / date-range pill — computed in the
+  // database (see adminController.getOrdersSummary) instead of by summing
+  // the entire order list client-side.
+  const fetchSummary = useCallback(() => {
+    getOrdersSummary({
+      orderType: typeF !== "All" ? typeF : undefined,
+      search: debouncedSearch || undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+    })
+      .then((r) => setSummary(r.data || {}))
+      .catch(() => {});
+  }, [typeF, debouncedSearch, startDate, endDate]);
 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
 
-
-const filtered = orders.filter((o) => {
-  const q = search.toLowerCase();
-  const orderDate = new Date(o.createdAt).toISOString().slice(0, 10); // "YYYY-MM-DD"
-  return (
-    (filter === "All" || o.status === filter) &&
-    (typeF === "All" || o.orderType === typeF) &&
-    (payF === "All" || o.paymentStatus === payF) &&
-    (!startDate || orderDate >= startDate) &&   // ← from
-    (!endDate || orderDate <= endDate) &&       // ← to
-    (!q ||
-      o.orderId?.toLowerCase().includes(q) ||
-      o.user?.name?.toLowerCase().includes(q) ||
-      o.user?.phone?.includes(q))
-  );
-});
-
-// ← add this: totals for whatever is currently filtered (respects date range + other filters)
-// ✅ Replace your existing rangeStats block with this
-
-// Orders within the selected date range — independent of Status/Type/Payment dropdowns,
-// so "Completed + Paid" revenue isn't accidentally zeroed out by an unrelated filter.
-const ordersInRange = orders.filter((o) => {
-  const orderDate = new Date(o.createdAt).toISOString().slice(0, 10);
-  return (!startDate || orderDate >= startDate) && (!endDate || orderDate <= endDate);
-});
-
-const rangeStats = {
-  count: filtered.filter(
-    (o) => o.status === "Completed" && o.paymentStatus === "Paid"
-  ).length,
-  amount: ordersInRange
-    .filter((o) => o.status === "Completed" && o.paymentStatus === "Paid")
-    .reduce((s, o) => s + Number(o.total || 0), 0),
-};
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
 
   const handleStatusChange = async (id, newStatus) => {
     try {
@@ -969,6 +982,7 @@ const rangeStats = {
         prev.map((o) => (o._id === id ? { ...o, status: newStatus } : o)),
       );
       toast.success(`→ ${newStatus}`);
+      fetchSummary();
     } catch {
       toast.error("Update failed");
     }
@@ -981,6 +995,7 @@ const rangeStats = {
         prev.map((o) => (o._id === id ? { ...o, paymentStatus: newPaymentStatus } : o)),
       );
       toast.success(`Payment → ${newPaymentStatus === "Pending" ? "Unpaid" : newPaymentStatus}`);
+      fetchSummary();
     } catch {
       toast.error("Payment status update failed");
     }
@@ -998,61 +1013,35 @@ const rangeStats = {
     }
   };
 
-  const handleOrderCreated = (newOrder) => {
-    setOrders((prev) => [newOrder, ...prev]);
+  const handleOrderCreated = () => {
+    setPage(1);
+    fetchOrders();
+    fetchSummary();
   };
 
-  // const filtered = orders.filter((o) => {
-  //   const q = search.toLowerCase();
-  //   return (
-  //     (filter === "All" || o.status === filter) &&
-  //     (typeF === "All" || o.orderType === typeF) &&
-  //     (payF === "All" || o.paymentStatus === payF) &&
-  //     (!q ||
-  //       o.orderId?.toLowerCase().includes(q) ||
-  //       o.user?.name?.toLowerCase().includes(q) ||
-  //       o.user?.phone?.includes(q))
-  //   );
-  // });
-
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  const paginated = orders;
+  const totalPages = Math.ceil(totalCount / PER_PAGE);
 
   const stats = {
-  total: orders.length,
-  today: orders.filter(
-    (o) => new Date(o.createdAt).toDateString() === new Date().toDateString(),
-  ).length,
-  revenue: orders
-    .filter((o) => o.status === "Completed" && o.paymentStatus === "Paid") // ← was just paymentStatus === "Paid"
-    .reduce((s, o) => s + Number(o.total || 0), 0),
-  pending: orders.filter((o) =>
-    ["Placed", "Preparing", "Ready"].includes(o.status),
-  ).length,
-};
-const clearFilters = () => {
-  setSearch("");
-  setFilter("All");
-  setTypeF("All");
-  setPayF("All");
-  setStartDate("");   // ← was setDateF("")
-  setEndDate("");      // ← new
-  setPage(1);
-};
+    total: summary.total || 0,
+    today: summary.today || 0,
+    revenue: summary.revenue || 0,
+    pending: summary.pending || 0,
+  };
+  const rangeStats = { count: summary.rangeCount || 0, amount: summary.rangeAmount || 0 };
 
-const hasFilters =
-  search || filter !== "All" || typeF !== "All" || payF !== "All" || startDate || endDate;
+  const clearFilters = () => {
+    setSearch("");
+    setFilter("All");
+    setTypeF("All");
+    setPayF("All");
+    setStartDate("");
+    setEndDate("");
+    setPage(1);
+  };
 
-// const hasFilters = search || filter !== "All" || typeF !== "All" || payF !== "All" || dateF;  // ← add dateF
-  // const clearFilters = () => {
-  //   setSearch("");
-  //   setFilter("All");
-  //   setTypeF("All");
-  //   setPayF("All");
-  //   setPage(1);
-  // };
-  // const hasFilters =
-  //   search || filter !== "All" || typeF !== "All" || payF !== "All";
+  const hasFilters =
+    search || filter !== "All" || typeF !== "All" || payF !== "All" || startDate || endDate;
 
   return (
     <>
@@ -1264,9 +1253,7 @@ const hasFilters =
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {STATUSES.map((s) => {
             const cnt =
-              s === "All"
-                ? orders.length
-                : orders.filter((o) => o.status === s).length;
+              s === "All" ? summary.total || 0 : summary.byStatus?.[s] || 0;
             const st = STATUS_STYLE[s] || { bg: "#f0f0f0", color: "#555" };
             return (
               <button
@@ -1329,7 +1316,7 @@ const hasFilters =
           <div style={{ textAlign: "center", padding: "48px", color: "#aaa" }}>
             Loading…
           </div>
-        ) : filtered.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div style={{ textAlign: "center", padding: "48px", color: "#bbb" }}>
             <div style={{ fontSize: 30, marginBottom: 8 }}>📭</div>
             <div style={{ fontSize: 14 }}>No orders match your filters</div>
@@ -1356,9 +1343,9 @@ const hasFilters =
               Showing{" "}
               <span style={{ fontWeight: 500, color: PINK }}>
                 {(page - 1) * PER_PAGE + 1}–
-                {Math.min(page * PER_PAGE, filtered.length)}
+                {Math.min(page * PER_PAGE, totalCount)}
               </span>{" "}
-              of <span style={{ fontWeight: 500 }}>{filtered.length}</span>{" "}
+              of <span style={{ fontWeight: 500 }}>{totalCount}</span>{" "}
               orders
             </div>
             <div style={{ overflowX: "auto" }}>
