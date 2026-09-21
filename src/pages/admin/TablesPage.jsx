@@ -1149,26 +1149,36 @@ export default function TablesPage() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [ordersRes, invoicesRes, tablesRes] = await Promise.all([
-        getAllOrders({ limit: 100 }),
-        getAllInvoices().catch(() => ({ data: { invoices: [] } })),
+      // Ask the backend for only active dining orders directly (status
+      // $in [...]) instead of fetching up to 100 orders (any status, any
+      // type) and filtering out Completed/Cancelled/PendingConfirmation in
+      // the browser. This set is inherently small (one per occupied table),
+      // so it stays fast no matter how much order history accumulates.
+      const [ordersRes, tablesRes] = await Promise.all([
+        getAllOrders({
+          orderType: "Dining",
+          status: "Placed,Preparing,Ready,Delivered",
+          limit: 200,
+        }),
         getAllTables().catch(() => ({ data: { tables: [] } })),
       ]);
       const orders = ordersRes?.data?.orders || [];
-      const invoices = invoicesRes?.data?.invoices || [];
       const dbTables = tablesRes?.data?.tables || [];
 
       const oMap = {};
       orders
-        .filter(
-          (o) =>
-            o.orderType === "Dining" &&
-            o.tableNo &&
-            !["Completed", "Cancelled", "PendingConfirmation"].includes(o.status),
-        )
+        .filter((o) => o.tableNo)
         .forEach((o) => {
           oMap[Number(o.tableNo)] = o;
         });
+
+      // Invoices tied to exactly those active orders — was previously the
+      // ENTIRE invoices collection, unbounded, fetched every 30s.
+      const activeOrderIds = orders.map((o) => o._id);
+      const invoicesRes = activeOrderIds.length
+        ? await getAllInvoices({ orderIds: activeOrderIds.join(",") }).catch(() => ({ data: { invoices: [] } }))
+        : { data: { invoices: [] } };
+      const invoices = invoicesRes?.data?.invoices || [];
 
       const iMap = {};
       invoices.forEach((inv) => {
