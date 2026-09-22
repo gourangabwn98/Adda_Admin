@@ -7,6 +7,7 @@ import {
   updateOrderStatus,
   updatePaymentStatus,
   updateOrderPaymentMethod,
+  updateOrderItemsAdmin,
 } from "../../services/adminService.js";
 import { getMenu } from "../../services/menuService.js";
 import { placeOrder } from "../../services/orderService.js";
@@ -139,8 +140,14 @@ const StatPill = ({ label, value, color, sub }) => (
   </div>
 );
 
+// Statuses an Admin may modify items on — matches
+// server/controllers/orderController.js MODIFIABLE_STATUSES exactly;
+// backend is the real enforcement (see adminUpdateOrderItems), this only
+// controls whether the button is shown.
+const ADMIN_MODIFIABLE_STATUSES = ["Placed", "Preparing"];
+
 // ── OrderDetail (expand row) ──────────────────────────────────────────────────
-const OrderDetail = ({ order, onStatusChange, onPaymentStatusChange, onPaymentMethodChange }) => {
+const OrderDetail = ({ order, onStatusChange, onPaymentStatusChange, onPaymentMethodChange, onModify }) => {
   const subtotal = order.items?.reduce((s, i) => s + i.price * i.qty, 0) || 0;
   // const tax = Math.round(subtotal * 0.18);
   const tax=0;
@@ -160,15 +167,40 @@ const OrderDetail = ({ order, onStatusChange, onPaymentStatusChange, onPaymentMe
       <div>
         <div
           style={{
-            fontSize: 11,
-            fontWeight: 500,
-            color: "#aaa",
-            letterSpacing: 0.5,
-            textTransform: "uppercase",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
             marginBottom: 10,
           }}
         >
-          Items ordered
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#aaa",
+              letterSpacing: 0.5,
+              textTransform: "uppercase",
+            }}
+          >
+            Items ordered
+          </div>
+          {ADMIN_MODIFIABLE_STATUSES.includes(order.status) && (
+            <button
+              onClick={() => onModify(order)}
+              style={{
+                padding: "5px 12px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                border: `1px solid ${PINK}`,
+                background: "#fbeaf0",
+                color: PINK,
+              }}
+            >
+              ✏️ Modify Order
+            </button>
+          )}
         </div>
         {order.items?.map((item, i) => (
           <div
@@ -906,6 +938,341 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
+// MODIFY ORDER MODAL — Admin edits an existing Placed/Preparing order's
+// items. Reuses the same menu-fetch/service-charge/pricing-preview pattern
+// as CreateOrderModal above; the actual save goes through
+// updateOrderItemsAdmin, which recomputes subtotal/tax/service charge/total
+// server-side via the same computeOrderPricing used everywhere else — this
+// modal's live totals are a preview only, not the source of truth.
+// ══════════════════════════════════════════════════════════════════════════════
+const ModifyOrderModal = ({ order, onClose, onSaved }) => {
+  const [menuItems, setMenuItems] = useState([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("All");
+  // Seeded from the order's current items — menuItem is the snapshotted
+  // MenuItem _id (see server/models/Order.js item schema), which is exactly
+  // what updateOrderItemsAdmin needs back as menuItemId.
+  const [cart, setCart] = useState(() =>
+    (order.items || []).map((it) => ({
+      item: {
+        _id: String(it.menuItem),
+        name: it.name,
+        price: it.price,
+        category: it.category,
+      },
+      qty: it.qty,
+      notes: it.notes || "",
+    })),
+  );
+  const [saving, setSaving] = useState(false);
+  const [serviceChargePerItem, setServiceChargePerItem] = useState(0);
+  const [gstRate, setGstRate] = useState(0);
+  const [serviceChargeCategoryNames, setServiceChargeCategoryNames] = useState([]);
+
+  useEffect(() => {
+    getMenu({})
+      .then((r) => { setMenuItems(r.data || []); setMenuLoading(false); })
+      .catch(() => setMenuLoading(false));
+
+    getRestaurantProfile()
+      .then((res) => {
+        const p = res.data?.data || res.data;
+        setServiceChargePerItem(p?.serviceCharge || 0);
+        setGstRate(p?.gstRate || 0);
+        setServiceChargeCategoryNames(
+          (p?.serviceChargeCategories || [])
+            .map((c) => (typeof c === "string" ? c : c?.name))
+            .filter(Boolean)
+            .map((n) => n.trim().toLowerCase()),
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  const categories = [
+    "All",
+    ...new Set(
+      menuItems
+        .map((m) => (typeof m.category === "string" ? m.category.trim() : ""))
+        .filter(Boolean),
+    ),
+  ];
+
+  const filtered = menuItems.filter(
+    (m) =>
+      m.name.toLowerCase().includes(search.toLowerCase()) &&
+      (categoryFilter === "All" ||
+        (typeof m.category === "string" ? m.category.trim() : "") === categoryFilter),
+  );
+
+  const getQty = (id) => cart.find((c) => c.item._id === id)?.qty || 0;
+
+  const addItem = (item) =>
+    setCart((p) => {
+      const ex = p.find((c) => c.item._id === item._id);
+      return ex
+        ? p.map((c) => (c.item._id === item._id ? { ...c, qty: c.qty + 1 } : c))
+        : [...p, { item, qty: 1, notes: "" }];
+    });
+
+  const decreaseItem = (id) =>
+    setCart((p) => {
+      const ex = p.find((c) => c.item._id === id);
+      if (!ex) return p;
+      return ex.qty === 1
+        ? p.filter((c) => c.item._id !== id)
+        : p.map((c) => (c.item._id === id ? { ...c, qty: c.qty - 1 } : c));
+    });
+
+  const removeItemEntirely = (id) => setCart((p) => p.filter((c) => c.item._id !== id));
+
+  const subtotal = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
+  const tax = Math.round(subtotal * (gstRate / 100));
+  const chargeableQty = cart
+    .filter((c) => isServiceChargeApplicable(c.item.category, serviceChargeCategoryNames))
+    .reduce((s, c) => s + c.qty, 0);
+  const serviceChargeAmt = serviceChargePerItem * chargeableQty;
+  const total = subtotal + tax + serviceChargeAmt;
+
+  const handleSave = async () => {
+    if (!cart.length) return toast.error("Order must have at least one item");
+    try {
+      setSaving(true);
+      const { data } = await updateOrderItemsAdmin(
+        order._id,
+        cart.map((c) => ({ menuItemId: c.item._id, qty: c.qty, notes: c.notes || "" })),
+      );
+      toast.success("Order updated");
+      onSaved(data);
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.message || "Failed to update order");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 999,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+    >
+      <div
+        style={{
+          background: WHITE, borderRadius: 18, width: "100%", maxWidth: 960,
+          maxHeight: "92vh", overflowY: "auto", display: "flex", flexDirection: "column",
+          boxShadow: "0 24px 60px rgba(0,0,0,.35)",
+        }}
+      >
+        {/* header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "18px 22px", background: PINK, borderRadius: "18px 18px 0 0" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 18, color: WHITE }}>✏️ Modify Order</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.85)", marginTop: 2 }}>
+              {order.orderId} · {order.tableNo ? `Table ${order.tableNo}` : order.orderType} · {order.status}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: "50%",
+            border: "none", background: "rgba(255,255,255,.2)", cursor: "pointer",
+            fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+            color: WHITE, fontWeight: 700 }}>
+            ✕
+          </button>
+        </div>
+
+        <div className="com-grid" style={{ flex: 1, overflow: "hidden" }}>
+          {/* LEFT: menu picker — reuses the same sticky search/category bar
+              pattern as CreateOrderModal. */}
+          <div className="com-left-panel" style={{ padding: "16px 20px", borderRight: "1px solid rgba(0,0,0,.06)",
+            display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
+            <div style={{
+              position: "sticky", top: 0, zIndex: 2, background: WHITE,
+              display: "flex", flexDirection: "column", gap: 12,
+              paddingBottom: 12, marginBottom: -12,
+              borderBottom: "1px solid rgba(0,0,0,.06)",
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#888", letterSpacing: 0.8,
+                textTransform: "uppercase" }}>
+                Add items
+              </div>
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search menu items…" style={{
+                  padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(0,0,0,.15)",
+                  fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box",
+                }} />
+              <div style={{
+                display: "flex", flexWrap: "nowrap", gap: 8,
+                overflowX: "auto", WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none", paddingBottom: 2,
+              }}>
+                {categories.map((c) => (
+                  <button key={c} onClick={() => setCategoryFilter(c)} style={{
+                    padding: "6px 14px", borderRadius: 20, cursor: "pointer",
+                    fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0,
+                    border: categoryFilter === c ? `1.5px solid ${PINK}` : "1px solid rgba(0,0,0,.15)",
+                    background: categoryFilter === c ? PINK : WHITE,
+                    color: categoryFilter === c ? WHITE : "#555",
+                  }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {menuLoading ? (
+              <div style={{ textAlign: "center", padding: 32, color: "#aaa" }}>Loading menu…</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+                gap: 12 }}>
+                {filtered.length === 0 && (
+                  <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: 24,
+                    color: "#bbb", fontSize: 13 }}>
+                    No items found
+                  </div>
+                )}
+                {filtered.map((m) => {
+                  const qty = getQty(m._id);
+                  return (
+                    <div key={m._id} style={{ display: "flex", flexDirection: "column", gap: 6,
+                      padding: 10, borderRadius: 14, background: "#fafafa",
+                      border: qty > 0 ? `2px solid ${PINK}` : "1px solid rgba(0,0,0,.08)" }}>
+                      <div style={{ width: "100%", aspectRatio: "1", borderRadius: 10,
+                        background: "#f0f0f0", display: "flex", alignItems: "center",
+                        justifyContent: "center", overflow: "hidden" }}>
+                        <ItemImage src={m.image} name={m.name} size={64} />
+                      </div>
+                      <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.25, minHeight: 33 }}>
+                        {m.name}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#aaa", textTransform: "uppercase" }}>
+                        {m.category}
+                      </div>
+                      <div style={{ fontWeight: 700, color: PINK, fontSize: 15 }}>
+                        ₹{m.price}
+                      </div>
+                      {qty === 0 ? (
+                        <button onClick={() => addItem(m)} style={{ width: "100%", padding: "8px 0",
+                          borderRadius: 20, background: PINK, color: WHITE, border: "none",
+                          cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                          Add
+                        </button>
+                      ) : (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+                          background: "#222", borderRadius: 20, padding: "4px 6px" }}>
+                          <button onClick={() => decreaseItem(m._id)} style={{ width: 26, height: 26,
+                            borderRadius: "50%", border: "none", background: WHITE,
+                            color: "#222", cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
+                            −
+                          </button>
+                          <span style={{ fontWeight: 700, color: WHITE, fontSize: 14 }}>{qty}</span>
+                          <button onClick={() => addItem(m)} style={{ width: 26, height: 26,
+                            borderRadius: "50%", background: PINK, color: WHITE, border: "none",
+                            cursor: "pointer", fontWeight: 700, fontSize: 16, lineHeight: 1 }}>
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: current order items + live totals */}
+          <div style={{ background: WHITE, padding: "16px 20px", display: "flex",
+            flexDirection: "column", gap: 14, overflowY: "auto" }}>
+            <div style={{ background: "#fafafa", borderRadius: 14, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#888", letterSpacing: 0.8,
+                textTransform: "uppercase", marginBottom: 8 }}>🧾 Order items</div>
+
+              {cart.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "20px 0", color: "#ccc", fontSize: 13 }}>
+                  No items — add at least one before saving
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {cart.map((c) => (
+                    <div key={c.item._id} style={{ padding: "6px 0", borderBottom: "1px dashed rgba(0,0,0,.1)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
+                        <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 700 }}>₹{c.item.price * c.qty}</span>
+                          <button
+                            onClick={() => removeItemEntirely(c.item._id)}
+                            title="Remove item"
+                            style={{ border: "none", background: "none", color: "#c62828",
+                              cursor: "pointer", fontSize: 13, padding: 2 }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {[
+                    { l: "Subtotal", v: `₹${subtotal}`, c: "#888" },
+                    ...(tax > 0
+                      ? [{ l: `GST (${gstRate}%)`, v: `₹${tax}`, c: "#888" }]
+                      : []),
+                    ...(serviceChargeAmt > 0
+                      ? [{
+                          l: `Service Charge (₹${serviceChargePerItem} × ${chargeableQty} item${chargeableQty !== 1 ? "s" : ""})`,
+                          v: `₹${serviceChargeAmt}`,
+                          c: "#888",
+                        }]
+                      : []),
+                  ].map((r) => (
+                    <div key={r.l} style={{ fontSize: 12, color: r.c,
+                      display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                      <span>{r.l}</span>
+                      <span>{r.v}</span>
+                    </div>
+                  ))}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700,
+                    fontSize: 16, borderTop: `2px solid ${PINK}`, paddingTop: 8, marginTop: 4 }}>
+                    <span>Total</span>
+                    <span style={{ color: PINK }}>₹{total}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* actions */}
+            <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
+              <button
+                onClick={onClose}
+                style={{ flex: 1, padding: "13px 0", borderRadius: 28,
+                  border: "1.5px solid rgba(0,0,0,.15)", background: WHITE, color: "#555",
+                  fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || cart.length === 0}
+                style={{ flex: 2, padding: "13px 0", borderRadius: 28, border: "none",
+                  background: saving || cart.length === 0 ? "#ccc" : PINK, color: WHITE,
+                  fontWeight: 700, fontSize: 14,
+                  cursor: saving || cart.length === 0 ? "not-allowed" : "pointer" }}
+              >
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MAIN ORDERS PAGE
 // ══════════════════════════════════════════════════════════════════════════════
 export default function OrdersPage() {
@@ -917,6 +1284,7 @@ export default function OrdersPage() {
   const [payF, setPayF] = useState("All");
   const [expanded, setExpanded] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [modifyingOrder, setModifyingOrder] = useState(null);
   const [page, setPage] = useState(1);
   const PER_PAGE = 15;
   const [startDate, setStartDate] = useState(""); // e.g. "2025-06-01"
@@ -1563,6 +1931,7 @@ export default function OrdersPage() {
                                 }}
                                 onPaymentStatusChange={handlePaymentStatusChange}
                                 onPaymentMethodChange={handlePaymentMethodChange}
+                                onModify={setModifyingOrder}
                               />
                             </td>
                           </tr>
@@ -1676,6 +2045,22 @@ export default function OrdersPage() {
         <CreateOrderModal
           onClose={() => setShowCreate(false)}
           onCreated={handleOrderCreated}
+        />
+      )}
+
+      {/* Modify order modal — Admin editing an existing Placed/Preparing order */}
+      {modifyingOrder && (
+        <ModifyOrderModal
+          order={modifyingOrder}
+          onClose={() => setModifyingOrder(null)}
+          onSaved={(updated) => {
+            // Updates the Admin UI immediately from the backend's
+            // authoritative response, without waiting for the next poll —
+            // other listeners (Admin Dashboard, Waiter) pick up the same
+            // "order-status-updated" socket event the backend already emits.
+            setOrders((prev) => prev.map((o) => (o._id === updated._id ? updated : o)));
+            fetchSummary();
+          }}
         />
       )}
     </>

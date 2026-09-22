@@ -13,6 +13,11 @@ export const updatePaymentStatus = (id, paymentStatus) =>
   api.put(`/admin/orders/${id}/status`, { paymentStatus });
 export const updateOrderPaymentMethod = (id, paymentMethod) =>
   api.put(`/admin/orders/${id}/status`, { paymentMethod });
+// Admin item-level order modification — backend enforces status must be
+// Placed/Preparing and caller must be an actual Admin account (see
+// server/controllers/orderController.js adminUpdateOrderItems).
+export const updateOrderItemsAdmin = (id, items) =>
+  api.put(`/admin/orders/${id}/items`, { items });
 // Pending-confirmation requests (see orderRoutes.js, not under /admin/*)
 export const acceptOrderRequest = (id) => api.put(`/orders/${id}/accept`);
 export const declineOrderRequest = (id, reason) =>
