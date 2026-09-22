@@ -1005,6 +1005,7 @@ import {
   updateRestaurantPrinter,
   deleteRestaurantPrinter,
 } from "../../services/adminService.js";
+import { getCategories } from "../../services/menuService.js";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const PINK      = "#e91e8c";
@@ -1167,6 +1168,9 @@ export default function ProfilePage() {
     openingTime:"09:00", closingTime:"22:00", avgDeliveryTime:30,
     minOrderAmount:0, freeDeliveryAbove:300, deliveryBaseFee:40, deliveryFeePerKm:8,
     serviceCharge:0, packingCharge:0,
+    // Category _ids the per-item service charge applies to — an explicit
+    // allowlist (see server/utils/serviceCharge.js). Empty = applies nowhere.
+    serviceChargeCategories:[],
 
     socialInstagram:"", socialFacebook:"", website:"",
     services:{ dineIn:true, takeAway:true, delivery:true },
@@ -1181,6 +1185,8 @@ export default function ProfilePage() {
   const [saving,     setSaving]     = useState(false);
   const [uploading,  setUploading]  = useState(false);
   const [logoPreview,setLogoPreview]= useState("");
+  // All menu categories, for the Service Charge Categories checkbox list.
+  const [categories, setCategories] = useState([]);
 
   // Banner add-row state
   const [bannerFile,    setBannerFile]    = useState(null);
@@ -1199,14 +1205,24 @@ export default function ProfilePage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await getRestaurantProfile();
-        if (res?.data?.data) {
-          const d = res.data.data;
+        const [profileRes, categoriesRes] = await Promise.all([
+          getRestaurantProfile(),
+          getCategories().catch(() => ({ data: { data: [] } })),
+        ]);
+        setCategories(categoriesRes?.data?.data || []);
+
+        if (profileRes?.data?.data) {
+          const d = profileRes.data.data;
           const merged = {
             ...DEFAULTS, ...d,
             services:   { ...DEFAULTS.services,   ...(d.services   || {}) },
             banners:    d.banners    || [],
             printerIps: d.printerIps || [],
+            // Backend returns populated {_id, name} docs — the checkbox UI
+            // only needs the ids to know what's selected.
+            serviceChargeCategories: (d.serviceChargeCategories || []).map(
+              (c) => (typeof c === "string" ? c : c._id),
+            ),
           };
           setProfile(merged);
           setDraft(merged);
@@ -1219,6 +1235,14 @@ export default function ProfilePage() {
     })();
   }, []);
 
+  const toggleServiceChargeCategory = (catId) =>
+    setDraft((p) => ({
+      ...p,
+      serviceChargeCategories: p.serviceChargeCategories.includes(catId)
+        ? p.serviceChargeCategories.filter((id) => id !== catId)
+        : [...p.serviceChargeCategories, catId],
+    }));
+
   // ── Section edit helpers ───────────────────────────────────────────────────
   const startEdit  = (sec) => { setDraft({ ...profile }); setEditing(p => ({ ...p, [sec]:true  })); };
   const cancelEdit = (sec) => {                            setEditing(p => ({ ...p, [sec]:false })); };
@@ -1230,7 +1254,7 @@ export default function ProfilePage() {
       case "address": return pick("address","city","latitude","longitude","dineInRange","deliveryRange");
       case "biz":     return pick("fssaiNumber","gstNumber","aboutRestaurant");
       case "hours":   return pick("openingTime","closingTime","avgDeliveryTime");
-      case "pricing": return pick("minOrderAmount","freeDeliveryAbove","deliveryBaseFee","deliveryFeePerKm","serviceCharge","packingCharge","gstRate");
+      case "pricing": return pick("minOrderAmount","freeDeliveryAbove","deliveryBaseFee","deliveryFeePerKm","serviceCharge","packingCharge","gstRate","serviceChargeCategories");
       case "social":  return pick("socialInstagram","socialFacebook","website");
       case "services":return pick("services","notificationSound");
       default:        return {};
@@ -1714,15 +1738,27 @@ export default function ProfilePage() {
           : "Not set"
       }
     />
+    <ViewItem
+      full
+      label="Service Charge applies to"
+      value={
+        profile.serviceChargeCategories?.length
+          ? categories
+              .filter((c) => profile.serviceChargeCategories.includes(c._id))
+              .map((c) => c.name)
+              .join(", ") || null
+          : null
+      }
+    />
   </div>
 
         }
         editContent={
           <div className="pp-edit-grid">
             {[
-              
+
               { label:"Service Charge (₹ per item qty)", key:"serviceCharge" },
-             
+
               { label:"GST Rate (%)",            key:"gstRate" },
             ].map(({ label, key }) => (
               <Field key={key} label={label}>
@@ -1730,6 +1766,41 @@ export default function ProfilePage() {
                        onChange={e => setNum(key, e.target.value)} />
               </Field>
             ))}
+            <Field label="Service Charge applies to" full>
+              {categories.length === 0 ? (
+                <div style={{ fontSize:13, color:"#aaa" }}>No categories yet</div>
+              ) : (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                  {categories.map((c) => {
+                    const checked = draft.serviceChargeCategories.includes(c._id);
+                    return (
+                      <label
+                        key={c._id}
+                        style={{
+                          display:"flex", alignItems:"center", gap:6,
+                          padding:"7px 12px", borderRadius:20, cursor:"pointer",
+                          fontSize:13, fontWeight:500,
+                          border: checked ? `1.5px solid ${PINK}` : "1px solid rgba(0,0,0,.12)",
+                          background: checked ? PINK_BG : "#fff",
+                          color: checked ? PINK_DARK : "#555",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleServiceChargeCategory(c._id)}
+                          style={{ accentColor: PINK }}
+                        />
+                        {c.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize:11, color:"#aaa", marginTop:6 }}>
+                Service charge applies only to selected categories. None selected = no service charge on any order.
+              </div>
+            </Field>
           </div>
         }
       />
