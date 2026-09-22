@@ -36,11 +36,14 @@ if (!document.getElementById("create-order-modal-styles")) {
   document.head.appendChild(s);
 }
 
-// Parcel / Water / Gas items are exempt from service charge (matches
-// server/utils/serviceCharge.js).
-const SERVICE_CHARGE_EXEMPT_CATEGORIES = ["parcel", "water", "gas"];
-const isServiceChargeExempt = (category) =>
-  SERVICE_CHARGE_EXEMPT_CATEGORIES.includes(String(category || "").trim().toLowerCase());
+// Service charge applies only to the categories selected in Admin → Profile
+// → Pricing & delivery (matches server/utils/serviceCharge.js) — everything
+// else is exempt. `applicableCategoryNames` is that selection, resolved to
+// lowercased category names.
+const isServiceChargeApplicable = (category, applicableCategoryNames) => {
+  const normalized = String(category || "").trim().toLowerCase();
+  return !!normalized && (applicableCategoryNames || []).includes(normalized);
+};
 
 const STATUS_STYLE = {
   Placed: { bg: "#E6F1FB", color: "#185FA5" },
@@ -492,6 +495,10 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
   const [menuLoading, setMenuLoading] = useState(true);
   const [serviceChargePerItem, setServiceChargePerItem] = useState(0);
   const [gstRate, setGstRate] = useState(0);
+  // Lowercased category names the service charge applies to (Admin →
+  // Profile → Pricing & delivery) — mirrors backend orderController.js
+  // computeOrderPricing for this live preview.
+  const [serviceChargeCategoryNames, setServiceChargeCategoryNames] = useState([]);
 
   useEffect(() => {
     getMenu({})
@@ -503,6 +510,12 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
         const p = res.data?.data || res.data;
         setServiceChargePerItem(p?.serviceCharge || 0);
         setGstRate(p?.gstRate || 0);
+        setServiceChargeCategoryNames(
+          (p?.serviceChargeCategories || [])
+            .map((c) => (typeof c === "string" ? c : c?.name))
+            .filter(Boolean)
+            .map((n) => n.trim().toLowerCase()),
+        );
       })
       .catch(() => {});
   }, []);
@@ -553,10 +566,10 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 
   const subtotal         = cart.reduce((s, c) => s + c.item.price * c.qty, 0);
   const tax              = Math.round(subtotal * (gstRate / 100));
-  // Parcel / Water / Gas items are exempt from service charge (matches
+  // Only Admin-selected categories incur service charge (matches
   // server/utils/serviceCharge.js).
   const chargeableQty    = cart
-    .filter((c) => !isServiceChargeExempt(c.item.category))
+    .filter((c) => isServiceChargeApplicable(c.item.category, serviceChargeCategoryNames))
     .reduce((s, c) => s + c.qty, 0);
   const serviceChargeAmt = serviceChargePerItem * chargeableQty;
   // const discount         = subtotal > 400 ? 10 : 0;
