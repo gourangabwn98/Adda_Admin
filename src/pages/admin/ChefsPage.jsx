@@ -11,6 +11,13 @@ import {
 const PINK = "#e91e8c";
 const WHITE = "rgb(216, 227, 232)";
 
+// Local calendar date as "YYYY-MM-DD" — same pattern as
+// DashboardPage.jsx todayStr(), used as the revenue filter's default.
+const todayStr = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+};
+
 export default function ChefsPage() {
   const [chefs, setChefs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +31,9 @@ export default function ChefsPage() {
   // Waiter-wise daily revenue (Cash/Online), keyed by chefId.
   const [revenueByChef, setRevenueByChef] = useState({});
   const [revenueDate, setRevenueDate] = useState("");
+  // Calendar filter for the Cash/Online/Total columns — defaults to today,
+  // same default the backend already applies when no `date` is sent.
+  const [selectedDate, setSelectedDate] = useState(todayStr());
 
   const fetchChefs = useCallback(async () => {
     try {
@@ -38,7 +48,7 @@ export default function ChefsPage() {
 
   const fetchRevenue = useCallback(async () => {
     try {
-      const res = await getChefRevenue();
+      const res = await getChefRevenue({ date: selectedDate });
       const rows = res.data?.chefs || [];
       setRevenueByChef(Object.fromEntries(rows.map((r) => [r.chefId, r])));
       setRevenueDate(res.data?.date || "");
@@ -46,12 +56,15 @@ export default function ChefsPage() {
       // Non-fatal — the chef list itself still renders without revenue.
       setRevenueByChef({});
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     fetchChefs();
+  }, [fetchChefs]);
+
+  useEffect(() => {
     fetchRevenue();
-  }, [fetchChefs, fetchRevenue]);
+  }, [fetchRevenue]);
 
   const handleCreateChef = async () => {
     if (!newChef.name || !newChef.phone) {
@@ -124,20 +137,53 @@ export default function ChefsPage() {
             {revenueDate && ` · Daily revenue for ${revenueDate}`}
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{
-            background: PINK,
-            color: "white",
-            border: "none",
-            padding: "12px 24px",
-            borderRadius: 25,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          + Add New Chef
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Revenue date filter — drives the Cash/Online/Total columns below */}
+          <input
+            type="date"
+            value={selectedDate}
+            max={todayStr()}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            style={{
+              padding: "9px 12px",
+              borderRadius: 8,
+              border: "0.5px solid rgba(0,0,0,.15)",
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          />
+          {selectedDate !== todayStr() && (
+            <button
+              onClick={() => setSelectedDate(todayStr())}
+              style={{
+                padding: "9px 14px",
+                borderRadius: 8,
+                border: `0.5px solid ${PINK}`,
+                background: "white",
+                color: PINK,
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              Today
+            </button>
+          )}
+          <button
+            onClick={() => setShowModal(true)}
+            style={{
+              background: PINK,
+              color: "white",
+              border: "none",
+              padding: "12px 24px",
+              borderRadius: 25,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            + Add New Chef
+          </button>
+        </div>
       </div>
 
       <div
@@ -189,7 +235,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Cash Today
+                Cash {selectedDate === todayStr() ? "Today" : revenueDate}
               </th>
               <th
                 style={{
@@ -199,7 +245,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Online Today
+                Online {selectedDate === todayStr() ? "Today" : revenueDate}
               </th>
               <th
                 style={{
@@ -209,7 +255,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Total Today
+                Total {selectedDate === todayStr() ? "Today" : revenueDate}
               </th>
               <th
                 style={{
