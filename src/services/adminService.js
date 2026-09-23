@@ -58,6 +58,10 @@ export const getChefRevenue = (params) => api.get("admin/chefs/revenue", { param
 export const createChef = (data) => api.post("admin/chefs", data);
 export const updateChefStatus = (id, status) =>
   api.patch(`admin/chefs/${id}/status`, { status });
+// Staff role: Waiter / Chef / Manager / Others — only Waiter staff collect
+// the bill for Client orders they accept (server orderController.acceptOrder).
+export const updateChefRole = (id, role) =>
+  api.patch(`admin/chefs/${id}/role`, { role });
 export const deleteChef = (id) => api.delete(`admin/chefs/${id}`);
 
 //admin profile
