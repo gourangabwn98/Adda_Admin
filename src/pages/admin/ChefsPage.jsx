@@ -4,12 +4,16 @@ import {
   getAllChefs,
   createChef,
   updateChefStatus,
+  updateChefRole,
   deleteChef,
   getChefRevenue,
 } from "../../services/adminService.js";
 
 const PINK = "#e91e8c";
 const WHITE = "rgb(216, 227, 232)";
+// Must match server models/Chef.js STAFF_ROLES. Records created before roles
+// existed have no role and are treated as Waiter by the server.
+const STAFF_ROLES = ["Waiter", "Chef", "Manager", "Others"];
 
 // Local calendar date as "YYYY-MM-DD" — same pattern as
 // DashboardPage.jsx todayStr(), used as the revenue filter's default.
@@ -26,6 +30,7 @@ export default function ChefsPage() {
     name: "",
     phone: "",
     status: "Active",
+    role: "Waiter",
   });
   const [submitting, setSubmitting] = useState(false);
   // Waiter-wise daily revenue (Cash/Online), keyed by chefId.
@@ -79,7 +84,7 @@ export default function ChefsPage() {
       await createChef(newChef);
       toast.success("Chef account created successfully");
       setShowModal(false);
-      setNewChef({ name: "", phone: "", status: "Active" });
+      setNewChef({ name: "", phone: "", status: "Active", role: "Waiter" });
       fetchChefs();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create chef");
@@ -96,6 +101,16 @@ export default function ChefsPage() {
       fetchChefs();
     } catch (err) {
       toast.error("Failed to update status");
+    }
+  };
+
+  const handleRoleChange = async (chefId, role) => {
+    try {
+      await updateChefRole(chefId, role);
+      toast.success(`Role changed to ${role}`);
+      fetchChefs();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update role");
     }
   };
 
@@ -220,6 +235,16 @@ export default function ChefsPage() {
               <th
                 style={{
                   padding: "14px 16px",
+                  textAlign: "left",
+                  fontSize: 13,
+                  color: "#666",
+                }}
+              >
+                Role
+              </th>
+              <th
+                style={{
+                  padding: "14px 16px",
                   textAlign: "center",
                   fontSize: 13,
                   color: "#666",
@@ -279,6 +304,23 @@ export default function ChefsPage() {
                 </td>
                 <td style={{ padding: "14px 16px", color: "#555" }}>
                   +91 {chef.phone}
+                </td>
+                <td style={{ padding: "14px 16px" }}>
+                  <select
+                    value={chef.role || "Waiter"}
+                    onChange={(e) => handleRoleChange(chef._id, e.target.value)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "0.5px solid #ddd",
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {STAFF_ROLES.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
                 </td>
                 <td style={{ padding: "14px 16px", textAlign: "center" }}>
                   <span
@@ -340,7 +382,7 @@ export default function ChefsPage() {
             {chefs.length === 0 && (
               <tr>
                 <td
-                  colSpan="7"
+                  colSpan="8"
                   style={{ padding: 40, textAlign: "center", color: "#aaa" }}
                 >
                   No chefs added yet
@@ -401,11 +443,31 @@ export default function ChefsPage() {
               style={{
                 width: "100%",
                 padding: 12,
-                marginBottom: 20,
+                marginBottom: 16,
                 borderRadius: 8,
                 border: "1px solid #ddd",
               }}
             />
+
+            <label style={{ display: "block", fontSize: 13, color: "#555", marginBottom: 6 }}>
+              Role
+            </label>
+            <select
+              value={newChef.role}
+              onChange={(e) => setNewChef({ ...newChef, role: e.target.value })}
+              style={{
+                width: "100%",
+                padding: 12,
+                marginBottom: 20,
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                cursor: "pointer",
+              }}
+            >
+              {STAFF_ROLES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
 
             <div style={{ display: "flex", gap: 12 }}>
               <button
