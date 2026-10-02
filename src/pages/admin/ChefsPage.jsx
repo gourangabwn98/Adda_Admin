@@ -167,23 +167,22 @@ export default function ChefsPage() {
               cursor: "pointer",
             }}
           />
-          {selectedDate !== todayStr() && (
-            <button
-              onClick={() => setSelectedDate(todayStr())}
-              style={{
-                padding: "9px 14px",
-                borderRadius: 8,
-                border: `0.5px solid ${PINK}`,
-                background: "white",
-                color: PINK,
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              Today
-            </button>
-          )}
+          <button
+            onClick={() => setSelectedDate(todayStr())}
+            style={{
+              visibility: selectedDate === todayStr() ? "hidden" : "visible",
+              padding: "9px 14px",
+              borderRadius: 8,
+              border: `0.5px solid ${PINK}`,
+              background: "white",
+              color: PINK,
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 500,
+            }}
+          >
+            Today
+          </button>
           <button
             onClick={() => setShowModal(true)}
             style={{
@@ -209,7 +208,18 @@ export default function ChefsPage() {
           overflow: "hidden",
         }}
       >
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          {/* Fixed column widths so changing the revenue date only changes values, not layout */}
+          <colgroup>
+            <col />
+            <col style={{ width: 150 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 120 }} />
+            <col style={{ width: 200 }} />
+          </colgroup>
           <thead>
             <tr style={{ background: "#f8f8f8" }}>
               <th
@@ -260,7 +270,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Cash {selectedDate === todayStr() ? "Today" : revenueDate}
+                Cash
               </th>
               <th
                 style={{
@@ -270,7 +280,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Online {selectedDate === todayStr() ? "Today" : revenueDate}
+                Online
               </th>
               <th
                 style={{
@@ -280,7 +290,7 @@ export default function ChefsPage() {
                   color: "#666",
                 }}
               >
-                Total {selectedDate === todayStr() ? "Today" : revenueDate}
+                Total
               </th>
               <th
                 style={{
@@ -337,13 +347,13 @@ export default function ChefsPage() {
                     {chef.status}
                   </span>
                 </td>
-                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555" }}>
+                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555", fontVariantNumeric: "tabular-nums" }}>
                   ₹{Math.round(rev?.cash || 0).toLocaleString()}
                 </td>
-                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555" }}>
+                <td style={{ padding: "14px 16px", textAlign: "right", color: "#555", fontVariantNumeric: "tabular-nums" }}>
                   ₹{Math.round(rev?.online || 0).toLocaleString()}
                 </td>
-                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 600, color: PINK }}>
+                <td style={{ padding: "14px 16px", textAlign: "right", fontWeight: 600, color: PINK, fontVariantNumeric: "tabular-nums" }}>
                   ₹{Math.round(rev?.total || 0).toLocaleString()}
                 </td>
                 <td style={{ padding: "14px 16px", textAlign: "center" }}>

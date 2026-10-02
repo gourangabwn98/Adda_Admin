@@ -10,6 +10,7 @@ import {
   updateTable,
   deleteTable,
   regenerateQR,
+  getTakeAwayQR,
 } from "../../services/adminService.js";
 
 // ── Design Tokens ─────────────────────────────────────────────────────────────
@@ -1295,6 +1296,18 @@ export default function TablesPage() {
     return { data };
   };
 
+  const handleDownloadTakeAwayQR = async () => {
+    try {
+      const { data } = await getTakeAwayQR();
+      const a = document.createElement("a");
+      a.href = data.qrCode;
+      a.download = "adda-takeaway-qr.png";
+      a.click();
+    } catch {
+      toast.error("Failed to download Take Away QR");
+    }
+  };
+
   const activeTables = tables.filter((t) => t.status === "Active" || !t.status);
   const occupied = activeTables.filter((t) => tableMap[t.tableNo]).length;
   const revenue = Object.values(tableMap).reduce(
@@ -1409,6 +1422,19 @@ export default function TablesPage() {
             )}
           </div>
         </div>
+        <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={handleDownloadTakeAwayQR}
+          className="qr-btn"
+          style={{
+            background: PINK_LIGHT,
+            color: PINK_DARK,
+            borderColor: `${PINK}44`,
+            borderRadius: 25,
+          }}
+        >
+          ↓ Take Away QR
+        </button>
         <button
           onClick={() => setShowModal(true)}
           style={{
@@ -1434,6 +1460,7 @@ export default function TablesPage() {
         >
           + New Table
         </button>
+        </div>
       </div>
 
       {/* Stats */}
