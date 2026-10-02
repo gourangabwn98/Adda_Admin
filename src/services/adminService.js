@@ -47,6 +47,7 @@ export const updateTable = (tableNo, d) =>
 export const deleteTable = (tableNo) => api.delete(`/admin/tables/${tableNo}`);
 export const regenerateQR = (tableNo) =>
   api.post(`/admin/tables/${tableNo}/regenerate-qr`);
+export const getTakeAwayQR = () => api.get("/admin/tables/takeaway-qr");
 
 //for chef
 
