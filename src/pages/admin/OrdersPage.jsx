@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import {
   getAllOrders,
@@ -946,6 +946,27 @@ const CreateOrderModal = ({ onClose, onCreated }) => {
 // modal's live totals are a preview only, not the source of truth.
 // ══════════════════════════════════════════════════════════════════════════════
 const ModifyOrderModal = ({ order, onClose, onSaved }) => {
+  // Category strip is horizontal-only, but a plain mouse wheel emits vertical
+  // deltas — translate them into horizontal scroll. Native listener because
+  // React's onWheel is passive and can't preventDefault. Trackpad horizontal
+  // swipes and touch scrolling are left to the browser.
+  const categoryStripRef = useRef(null);
+  useEffect(() => {
+    const el = categoryStripRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 0) return;
+      const atStart = el.scrollLeft <= 0 && e.deltaY < 0;
+      const atEnd = el.scrollLeft >= max - 1 && e.deltaY > 0;
+      if (atStart || atEnd) return; // let the panel scroll vertically at the edges
+      e.preventDefault();
+      el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   const [menuItems, setMenuItems] = useState([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -1104,10 +1125,11 @@ const ModifyOrderModal = ({ order, onClose, onSaved }) => {
                   padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(0,0,0,.15)",
                   fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box",
                 }} />
-              <div style={{
+              <div ref={categoryStripRef} style={{
                 display: "flex", flexWrap: "nowrap", gap: 8,
                 overflowX: "auto", WebkitOverflowScrolling: "touch",
                 scrollbarWidth: "none", paddingBottom: 2,
+                overscrollBehaviorX: "contain",
               }}>
                 {categories.map((c) => (
                   <button key={c} onClick={() => setCategoryFilter(c)} style={{
@@ -1198,10 +1220,36 @@ const ModifyOrderModal = ({ order, onClose, onSaved }) => {
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {cart.map((c) => (
                     <div key={c.item._id} style={{ padding: "6px 0", borderBottom: "1px dashed rgba(0,0,0,.1)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 }}>
-                        <span>{c.item.name} <span style={{ color: "#aaa" }}>×{c.qty}</span></span>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontWeight: 700 }}>₹{c.item.price * c.qty}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                        gap: 8, fontSize: 13 }}>
+                        <span style={{ flex: 1, minWidth: 0, wordBreak: "break-word" }}>{c.item.name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6,
+                            background: "#222", borderRadius: 20, padding: "3px 5px" }}>
+                            <button
+                              onClick={() => decreaseItem(c.item._id)}
+                              title="Decrease quantity"
+                              aria-label={`Decrease ${c.item.name}`}
+                              style={{ width: 24, height: 24, borderRadius: "50%", border: "none",
+                                background: WHITE, color: "#222", cursor: "pointer",
+                                fontWeight: 700, fontSize: 15, lineHeight: 1, padding: 0 }}
+                            >
+                              −
+                            </button>
+                            <span style={{ fontWeight: 700, color: WHITE, fontSize: 13,
+                              minWidth: 16, textAlign: "center" }}>{c.qty}</span>
+                            <button
+                              onClick={() => addItem(c.item)}
+                              title="Increase quantity"
+                              aria-label={`Increase ${c.item.name}`}
+                              style={{ width: 24, height: 24, borderRadius: "50%", border: "none",
+                                background: PINK, color: WHITE, cursor: "pointer",
+                                fontWeight: 700, fontSize: 15, lineHeight: 1, padding: 0 }}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span style={{ fontWeight: 700, minWidth: 44, textAlign: "right" }}>₹{c.item.price * c.qty}</span>
                           <button
                             onClick={() => removeItemEntirely(c.item._id)}
                             title="Remove item"
